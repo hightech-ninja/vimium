@@ -158,6 +158,16 @@ b: http://b.com/?q=%s description
 
         <h2></h2>
         <label class="boolean-label">
+          <input name="suppressOverlappingHintMarkers" type="checkbox" />
+          Hide link hints covered by another hint
+        </label>
+        <div class="example">
+          When several hints sit in the same place, show only one of them. Press <tt>Space</tt> (with
+          a modifier when filtering hints) to show the others in turn.
+        </div>
+
+        <h2></h2>
+        <label class="boolean-label">
           <input name="grabBackFocus" type="checkbox" />
           Don't let pages steal the focus on load
         </label>

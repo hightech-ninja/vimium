@@ -71,6 +71,8 @@ class HintDescriptor {
 // "link-hints/open-in-current-tab"), which appears in the HUD's data-message-name attribute. This
 // allows users to write CSS for each HUD message (hiding some of them).
 const isMac = KeyboardUtils.platform === "Mac";
+// Two hint markers are duplicates when they share at least this fraction of the smaller one's area.
+const MARKER_SUPPRESSION_OVERLAP = 0.5;
 const OPEN_IN_CURRENT_TAB = {
   name: "open-in-current-tab",
   indicator: "Open link in current tab",
@@ -371,6 +373,9 @@ class LinkHintsMode {
     this.hintMode = null;
     // A count of the number of Tab presses since the last non-Tab keyboard event.
     this.tabCount = 0;
+    // Groups of markers which cover each other, of which only one is visible. See
+    // suppressOverlappingMarkers().
+    this.overlapGroups = [];
     // Whether we're waiting for the user to confirm a single match before activating it. One of:
     //   null      - not confirming.
     //   "enter"   - waiting for an explicit Enter (confirm) or Escape (cancel).
@@ -416,6 +421,7 @@ class LinkHintsMode {
     });
 
     this.renderHints();
+    this.suppressOverlappingMarkers();
     this.setIndicator();
   }
 
@@ -631,12 +637,14 @@ class LinkHintsMode {
     } else if (linksMatched.length === 1) {
       this.activateLink(linksMatched[0], userMightOverType);
     } else {
+      const wasVisible = new Set(this.hintMarkers.filter((m) => this.isMarkerVisible(m)));
       for (const marker of this.hintMarkers) {
         this.hideMarker(marker);
       }
       for (const matched of linksMatched) {
         this.showMarker(matched, this.markerMatcher.hintKeystrokeQueue.length);
       }
+      this.suppressOverlappingMarkers(wasVisible);
     }
 
     return this.setIndicator();
@@ -651,8 +659,93 @@ class LinkHintsMode {
     return false;
   }
 
-  // Rotate the hints' z-index values so that hidden hints become visible.
+  isMarkerVisible(marker) {
+    return marker.isLocalMarker() && (marker.element.style.display !== "none");
+  }
+
+  // Whether two markers cover each other enough to be duplicates.
+  markersOverlapSubstantially(marker1, marker2) {
+    const rect1 = marker1.markerRect;
+    const rect2 = marker2.markerRect;
+    // This is called for many pairs of markers, so we avoid Rect.intersect, which allocates.
+    const width = Math.min(rect1.right, rect2.right) - Math.max(rect1.left, rect2.left);
+    if (width <= 0) return false;
+    const height = Math.min(rect1.bottom, rect2.bottom) - Math.max(rect1.top, rect2.top);
+    if (height <= 0) return false;
+    const smallerArea = Math.min(rect1.width * rect1.height, rect2.width * rect2.height);
+    return width * height >= MARKER_SUPPRESSION_OVERLAP * smallerArea;
+  }
+
+  // Shows only one marker of each group of visible markers which cover each other; rotateHints
+  // shows the others in turn. A marker joins the first group whose first marker it covers, so that
+  // a row of markers which only touch each other is never merged into one group. Within a group, we
+  // show the active marker (filtered hints), which Enter activates, so it's never hidden. Otherwise
+  // we keep showing a marker from `previouslyVisible`, if there is one, so typing doesn't undo
+  // rotation.
+  suppressOverlappingMarkers(previouslyVisible) {
+    this.overlapGroups = [];
+    if (!Settings.get("suppressOverlappingHintMarkers")) return;
+
+    // Markers are measured each time, because filtered hints change their markers' text.
+    const markers = this.hintMarkers.filter((m) => this.isMarkerVisible(m));
+    let rowHeight = 1;
+    for (const m of markers) {
+      m.markerRect = m.element.getClientRects()[0];
+      if (m.markerRect) rowHeight = Math.max(rowHeight, m.markerRect.height);
+    }
+
+    // Comparing each marker with every group is too slow on pages with 1000+ hints, so groups are
+    // indexed by the row their first marker starts in. A marker can only overlap a first marker
+    // whose top is less than one marker height above it, so only nearby rows are searched. Rows
+    // are searched in order, and the earliest overlapping group in any of them wins.
+    const groups = [];
+    const groupsByRow = new Map();
+    for (const m of markers) {
+      const rect = m.markerRect;
+      if (rect == null) continue;
+      let group = null;
+      const firstRow = Math.floor((rect.top - rowHeight) / rowHeight);
+      const lastRow = Math.floor(rect.bottom / rowHeight);
+      for (let row = firstRow; row <= lastRow; row++) {
+        const candidate = groupsByRow.get(row)?.find((g) =>
+          this.markersOverlapSubstantially(g.markers[0], m)
+        );
+        if (candidate && ((group == null) || (candidate.index < group.index))) group = candidate;
+      }
+      if (group) {
+        group.markers.push(m);
+      } else {
+        group = { index: groups.length, markers: [m] };
+        groups.push(group);
+        const row = Math.floor(rect.top / rowHeight);
+        if (!groupsByRow.has(row)) groupsByRow.set(row, []);
+        groupsByRow.get(row).push(group);
+      }
+    }
+
+    for (const { markers: group } of groups) {
+      if (group.length < 2) continue;
+      const shown = group.find((m) => m === this.markerMatcher.activeHintMarker) ??
+        group.find((m) => previouslyVisible?.has(m)) ?? group[0];
+      for (const m of group) {
+        if (m !== shown) this.hideMarker(m);
+      }
+      this.overlapGroups.push(group);
+    }
+  }
+
+  // Shows the next marker of each group of suppressed markers, and rotates the hints' z-index
+  // values so that hidden hints become visible. A group with the active marker (filtered hints)
+  // keeps showing it; Tab reaches the others there.
   rotateHints() {
+    for (const group of this.overlapGroups) {
+      if (group.includes(this.markerMatcher.activeHintMarker)) continue;
+      const i = group.findIndex((m) => this.isMarkerVisible(m));
+      if (i < 0) continue;
+      this.hideMarker(group[i]);
+      group[(i + 1) % group.length].element.style.display = "";
+    }
+
     // Partitions array into two arrays, based on the bool return value of predicate.
     function partition(array, predicate) {
       const a = [];

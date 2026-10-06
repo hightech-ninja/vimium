@@ -360,6 +360,126 @@ context("Alphabet link hints", () => {
   });
 });
 
+context("Overlapping link hint markers", () => {
+  let mode;
+  const displays = () => mode.hintMarkers.map((m) => m.element.style.display);
+  const markerFor = (id) => mode.hintMarkers.find((m) => m.localHint.element.id === id);
+
+  setup(() => {
+    initializeModeState();
+    stubSettings("filterLinkHints", false);
+    stubSettings("linkHintCharacters", "ab");
+    stubSettings("suppressOverlappingHintMarkers", true);
+    stub(globalThis, "windowIsFocused", () => true);
+    // A link around a button, whose hints are in the same place, and a link elsewhere.
+    document.getElementById("test-div").innerHTML = `
+      <a id="first" href="#" style="position: absolute; left: 200px; top: 200px;"
+        ><button id="second">second</button></a>
+      <a id="other" href="#" style="position: absolute; left: 200px; top: 300px;">other</a>`;
+  });
+
+  teardown(() => {
+    mode?.deactivateMode();
+    document.getElementById("test-div").innerHTML = "";
+    // Activating a link leaves a flash over it for a while, which would hide later tests' links.
+    for (const el of document.querySelectorAll(".vimium-flash")) el.remove();
+  });
+
+  should("show one marker of the markers which cover each other", () => {
+    mode = activateLinkHintsMode();
+    assert.equal(3, mode.hintMarkers.length);
+    assert.equal("", markerFor("first").element.style.display);
+    assert.equal("none", markerFor("second").element.style.display);
+    assert.equal("", markerFor("other").element.style.display);
+  });
+
+  should("show the next covered marker on space, and cycle back", () => {
+    mode = activateLinkHintsMode();
+    sendKeyboardEvent(" ");
+    assert.equal("none", markerFor("first").element.style.display);
+    assert.equal("", markerFor("second").element.style.display);
+    assert.equal("", markerFor("other").element.style.display);
+    sendKeyboardEvent(" ");
+    assert.equal("", markerFor("first").element.style.display);
+    assert.equal("none", markerFor("second").element.style.display);
+  });
+
+  should("keep the marker shown by space when the hints are updated", () => {
+    mode = activateLinkHintsMode();
+    sendKeyboardEvent(" ");
+    // Tab updates the visible markers without changing which hints match.
+    sendKeyboardEvent("Tab");
+    assert.equal("none", markerFor("first").element.style.display);
+    assert.equal("", markerFor("second").element.style.display);
+  });
+
+  should("activate a hidden marker's link by typing its hint", () => {
+    let clicked = false;
+    document.getElementById("second").addEventListener("click", () => clicked = true);
+    mode = activateLinkHintsMode();
+    const hidden = markerFor("second");
+    assert.equal("none", hidden.element.style.display);
+    sendKeyboardEvents(hidden.hintString);
+    assert.isTrue(clicked);
+  });
+
+  should("show every marker when the setting is off", () => {
+    stubSettings("suppressOverlappingHintMarkers", false);
+    mode = activateLinkHintsMode();
+    assert.equal(["", "", ""], displays());
+  });
+
+  should("not hide markers which only touch, nor chain them into one group", () => {
+    // Rows closer together than a marker's height, so each marker overlaps the next a little.
+    document.getElementById("test-div").innerHTML = [0, 1, 2, 3, 4].map((i) =>
+      `<a style="position: absolute; left: 200px; top: ${200 + i * 10}px;">row ${i}</a>`
+    ).join("");
+    mode = activateLinkHintsMode();
+    assert.equal(5, mode.hintMarkers.length);
+    const rects = mode.hintMarkers.map((m) => m.element.getClientRects()[0]);
+    assert.isTrue(Rect.intersects(rects[0], rects[1]));
+    assert.equal(["", "", "", "", ""], displays());
+  });
+
+  context("with filtered hints", () => {
+    const isShown = (id) => markerFor(id).element.style.display !== "none";
+    const activeId = () => mode.markerMatcher.activeHintMarker.localHint.element.id;
+
+    setup(() => {
+      stubSettings("filterLinkHints", true);
+      stubSettings("linkHintNumbers", "0123456789");
+      // The button's text is shorter, so it scores higher when its text is typed.
+      document.getElementById("test-div").innerHTML = `
+        <a id="first" href="#" style="position: absolute; left: 200px; top: 200px;"
+          ><button id="second">alpha</button> beta gamma</a>
+        <a id="other" href="#" style="position: absolute; left: 200px; top: 300px;">other</a>`;
+      mode = activateLinkHintsMode();
+    });
+
+    should("show the active hint when it's covered by another", () => {
+      sendKeyboardEvents("alpha");
+      assert.equal("second", activeId());
+      assert.isTrue(isShown("second"));
+      assert.isFalse(isShown("first"));
+    });
+
+    should("show the hint which Tab makes active", () => {
+      // Tab through all three hints, so the active hint is each of the covered pair once.
+      for (let i = 0; i < 3; i++) {
+        sendKeyboardEvent("Tab");
+        assert.isTrue(isShown(activeId()));
+      }
+    });
+
+    should("not hide the active hint on shift+space", () => {
+      while (activeId() === "other") sendKeyboardEvent("Tab");
+      const active = activeId();
+      sendKeyboardEvent(" ", "keydown", { shiftKey: true });
+      assert.isTrue(isShown(active));
+    });
+  });
+});
+
 context("Filtered link hints", () => {
   // In all of these tests, the order of the elements returned by getHintMarkerEls() may be
   // different from the order they are listed in the test HTML content. This is because
