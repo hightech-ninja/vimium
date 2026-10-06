@@ -20,11 +20,67 @@ const Marks = {
   },
 
   getMarkString() {
-    return JSON.stringify({
+    const mark = {
       scrollX: globalThis.scrollX,
       scrollY: globalThis.scrollY,
       hash: globalThis.location.hash,
-    });
+    };
+    // If scrolling commands scroll an element (e.g. one pane of the page) rather than the document,
+    // then also record which element that is, and its position.
+    const container = Scroller.activeScrollContainer();
+    const locator = container && this.getElementLocator(container);
+    if (locator) {
+      Object.assign(mark, {
+        container: locator,
+        containerScrollX: container.scrollLeft,
+        containerScrollY: container.scrollTop,
+      });
+    }
+    return JSON.stringify(mark);
+  },
+
+  // Returns a description of element's place in the document, from which findElement() can find
+  // it again (on this page, or after a reload): its id, if that's unique, and the path of child
+  // indexes and tag names from the root element. Returns null for elements in a shadow DOM.
+  getElementLocator(element) {
+    if (element.getRootNode() !== document) return null;
+    const path = [];
+    for (let el = element; el !== document.documentElement; el = el.parentElement) {
+      path.unshift([Array.prototype.indexOf.call(el.parentElement.children, el), el.localName]);
+    }
+    const id = (element.id && (document.getElementById(element.id) === element))
+      ? element.id
+      : null;
+    return { id, path };
+  },
+
+  // Finds the element described by getElementLocator(), or returns null.
+  findElement({ id, path }) {
+    const localName = path.length > 0 ? path[path.length - 1][1] : "html";
+    const elementWithId = id ? document.getElementById(id) : null;
+    if (elementWithId?.localName === localName) return elementWithId;
+    let element = document.documentElement;
+    for (const [index, name] of path) {
+      element = element.children[index];
+      if (element?.localName !== name) return null;
+    }
+    return element;
+  },
+
+  // Scrolls to a position recorded by getMarkString().
+  restorePosition(position) {
+    const container = position.container ? this.findElement(position.container) : null;
+    if (position.hash && (position.scrollX === 0) && (position.scrollY === 0) && !container) {
+      globalThis.location.hash = position.hash;
+      return;
+    }
+    globalThis.scrollTo(position.scrollX, position.scrollY);
+    if (container) {
+      // Scrolling commands should continue with the pane the mark is in.
+      Scroller.selectElement(container);
+      container.scrollLeft = position.containerScrollX;
+      container.scrollTop = position.containerScrollY;
+    }
   },
 
   setPreviousPosition() {
@@ -116,12 +172,7 @@ const Marks = {
                 : localStorage[this.getLocationKey(keyChar)];
               if (markString != null) {
                 this.setPreviousPosition();
-                const position = JSON.parse(markString);
-                if (position.hash && (position.scrollX === 0) && (position.scrollY === 0)) {
-                  globalThis.location.hash = position.hash;
-                } else {
-                  globalThis.scrollTo(position.scrollX, position.scrollY);
-                }
+                this.restorePosition(JSON.parse(markString));
                 this.showMessage("Jumped to local mark", keyChar);
               } else {
                 this.showMessage("Local mark not set", keyChar);

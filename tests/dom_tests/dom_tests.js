@@ -605,6 +605,100 @@ context("Selecting the scroll target with link hints", () => {
   });
 });
 
+context("Local marks in scrolling panes", () => {
+  const registryEntry = { options: {} };
+  const $ = (id) => document.getElementById(id);
+  const pane = (id, left) =>
+    `<div id="${id}" style="position: absolute; left: ${left}px; top: 200px; width: 150px;
+      height: 100px; overflow: auto;"><a href="#">link</a><div style="height: 1000px;"></div>
+    </div>`;
+  const setMark = (key) => {
+    Marks.activateCreateMode(1, { registryEntry });
+    sendKeyboardEvent(key);
+  };
+  const gotoMark = (key) => {
+    Marks.activateGotoMode(1, { registryEntry });
+    sendKeyboardEvent(key);
+  };
+  const markKeys = () => Object.keys(localStorage).filter((k) => k.startsWith("vimiumMark|"));
+
+  setup(() => {
+    initializeModeState();
+    stubSettings("smoothScroll", false);
+    Marks.localRegisters = {};
+    $("test-div").innerHTML = pane("pane1", 200) + pane("pane2", 400) +
+      `<a id="outside" href="#" style="position: absolute; left: 200px; top: 350px;">out</a>`;
+  });
+
+  teardown(() => {
+    $("test-div").innerHTML = "";
+    for (const key of markKeys()) localStorage.removeItem(key);
+    Marks.localRegisters = {};
+  });
+
+  should("restore the position of the pane the mark was set in", () => {
+    Scroller.selectElement($("pane2"));
+    $("pane2").scrollTop = 120;
+    setMark("a");
+    $("pane2").scrollTop = 0;
+    Scroller.selectElement($("pane1"));
+    $("pane1").scrollTop = 50;
+    gotoMark("a");
+    assert.equal(120, $("pane2").scrollTop);
+    assert.equal(50, $("pane1").scrollTop);
+    assert.isTrue($("pane2") === Scroller.activeElement());
+  });
+
+  should("jump back to the previous pane and position with `", () => {
+    Scroller.selectElement($("pane2"));
+    $("pane2").scrollTop = 120;
+    setMark("a");
+    Scroller.selectElement($("pane1"));
+    $("pane1").scrollTop = 50;
+    gotoMark("a");
+    $("pane1").scrollTop = 0;
+    gotoMark("`");
+    assert.equal(50, $("pane1").scrollTop);
+    assert.isTrue($("pane1") === Scroller.activeElement());
+  });
+
+  should("find a pane without an id again after the page re-renders it", () => {
+    $("pane2").removeAttribute("id");
+    const original = $("test-div").children[1];
+    Scroller.selectElement(original);
+    original.scrollTop = 80;
+    setMark("a");
+    $("test-div").innerHTML = $("test-div").innerHTML;
+    const rerendered = $("test-div").children[1];
+    assert.isFalse(rerendered === original);
+    gotoMark("a");
+    assert.equal(80, rerendered.scrollTop);
+  });
+
+  should("fall back to the document position when the pane is gone", () => {
+    Scroller.selectElement($("pane2"));
+    $("pane2").scrollTop = 120;
+    setMark("a");
+    $("pane2").remove();
+    gotoMark("a");
+    assert.equal(null, Scroller.activeElement());
+  });
+
+  should("not record a pane when scrolling commands scroll the document", () => {
+    Scroller.selectElement($("outside"));
+    const mark = JSON.parse(Marks.getMarkString());
+    assert.equal(undefined, mark.container);
+  });
+
+  should("restore marks set before panes were recorded", () => {
+    Scroller.selectElement($("pane1"));
+    localStorage[Marks.getLocationKey("a")] = JSON.stringify({ scrollX: 0, scrollY: 0, hash: "" });
+    gotoMark("a");
+    assert.equal(0, globalThis.scrollY);
+    assert.isTrue($("pane1") === Scroller.activeElement());
+  });
+});
+
 context("Filtered link hints", () => {
   // In all of these tests, the order of the elements returned by getHintMarkerEls() may be
   // different from the order they are listed in the test HTML content. This is because
