@@ -168,6 +168,15 @@ input[name="newTabCustomUrl"] {
   width: 400px;
 }
 
+#vomnibar-jump-modifier-container {
+  display: flex;
+  align-items: center;
+}
+
+#vomnibar-jump-modifier-container label {
+  margin-right: 20px;
+}
+
 #link-hint-characters-container,
 #link-hint-numbers-container,
 #wait-for-enter {

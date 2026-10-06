@@ -202,6 +202,26 @@ b: http://b.com/?q=%s description
           keyboards.
         </div>
 
+        <h2>Vomnibar number keys</h2>
+        <div id="vomnibar-jump-modifier-container">
+          <input id="vomnibarJumpCtrl" type="radio" name="vomnibarJumpModifier" value="ctrl" />
+          <label for="vomnibarJumpCtrl">Ctrl</label>
+          <input id="vomnibarJumpAlt" type="radio" name="vomnibarJumpModifier" value="alt" />
+          <label for="vomnibarJumpAlt">Alt / Option</label>
+          <input id="vomnibarJumpMeta" type="radio" name="vomnibarJumpModifier" value="meta" />
+          <label for="vomnibarJumpMeta">Cmd / Windows</label>
+          <input id="vomnibarJumpOff" type="radio" name="vomnibarJumpModifier" value="" />
+          <label for="vomnibarJumpOff">Off</label>
+        </div>
+        <div class="example">
+          The first ten Vomnibar results are numbered 1&ndash;9 and 0. Press this key with a number
+          to open that result; add <tt>Shift</tt> to open it in a new tab. Combinations which are also
+          browser or system shortcuts never reach Vimium. On macOS, <tt>Cmd</tt>+number switches
+          Chrome tabs, and <tt>Ctrl</tt>+number switches Desktops if the "Switch to Desktop"
+          shortcuts are on (System Settings &rarr; Keyboard &rarr; Keyboard Shortcuts &rarr; Mission
+          Control). Use <tt>Alt / Option</tt> instead, or turn those shortcuts off.
+        </div>
+
         <h2>Previous patterns</h2>
         <div>
           <input name="previousPatterns" type="text" />

@@ -14,6 +14,19 @@ import "../lib/handler_stack.js";
 import * as UIComponentMessenger from "./ui_component_messenger.js";
 import * as userSearchEngines from "../background_scripts/user_search_engines.js";
 
+// Values of the vomnibarJumpModifier setting. "" turns direct selection off. Shift is not offered,
+// because shift+digit types characters into the query.
+const jumpModifiers = ["ctrl", "alt", "meta"];
+
+// The number of results which get a number key: 1-9, then 0 for the 10th result.
+const jumpKeyCount = 10;
+
+// Returns the configured modifier for direct selection, or null if direct selection is off.
+function getJumpModifier() {
+  const modifier = Settings.get("vomnibarJumpModifier");
+  return jumpModifiers.includes(modifier) ? modifier : null;
+}
+
 // An instance of VomnibarUI. Exported for use by tests.
 export let ui;
 
@@ -176,7 +189,9 @@ class VomnibarUI {
     // translation (see #2915 and #2934).
     if ((event.type === "keypress") && (key !== "enter")) return null;
     if ((event.type === "keydown") && (key === "enter")) return null;
-    if (KeyboardUtils.isEscape(event)) {
+    if (this.jumpIndexFromKeyEvent(event) != null) {
+      return "jump";
+    } else if (KeyboardUtils.isEscape(event)) {
       return "dismiss";
     } else if (
       (key === "up") ||
@@ -204,14 +219,42 @@ class VomnibarUI {
     return null;
   }
 
+  // Returns the index of the result selected by modifier+digit (e.g. ctrl+1 for the first result,
+  // ctrl+0 for the 10th), or null if the event isn't such a key. Shift may be added to open the
+  // result in a new tab. We use event.code rather than event.key, because on macOS alt+digit
+  // produces a symbol (e.g. alt+1 is "¡"), and so that this works with any keyboard layout.
+  jumpIndexFromKeyEvent(event) {
+    if (event.type !== "keydown") return null;
+    const modifier = getJumpModifier();
+    if (modifier == null) return null;
+    for (const m of jumpModifiers) {
+      if (event[`${m}Key`] != (m == modifier)) return null;
+    }
+    const match = /^Digit([0-9])$/.exec(event.code ?? "");
+    if (!match) return null;
+    return (parseInt(match[1]) + jumpKeyCount - 1) % jumpKeyCount;
+  }
+
   async onKeyEvent(event) {
     const action = this.actionFromKeyEvent(event);
     if (!action) {
       return;
     }
 
-    if (action === "dismiss") {
+    if (["enter", "jump"].includes(action) && event.repeat) {
+      // Ignore auto-repeat while the key is held down. Otherwise, in the two steps of creating a tab
+      // group, the repeat of the key which picked "Create" would also pick the first color.
+    } else if (action === "dismiss") {
       this.hide();
+    } else if (action === "jump") {
+      // The key is consumed even when there's no result with this number, so that e.g. alt+digit
+      // on macOS doesn't type a symbol into the query.
+      const index = this.jumpIndexFromKeyEvent(event);
+      if (index < this.completions.length) {
+        this.selection = index;
+        this.updateSelection();
+        await this.handleEnterKey(event, { isJump: true });
+      }
     } else if (["tab", "down"].includes(action)) {
       if (
         (action === "tab") &&
@@ -273,15 +316,31 @@ class VomnibarUI {
     event.preventDefault();
   }
 
-  async handleEnterKey(event) {
+  // isJump: true if the user picked the selected result directly with modifier+digit.
+  async handleEnterKey(event, { isJump = false } = {}) {
     // When adding tabs to a group, acting on suggestions for an outdated query (e.g. the existing
     // groups shown before the user typed a new group's name) would add the tabs to the wrong group.
     // So first wait for the suggestions for the current query.
     if (
-      this.completerName == "tabGroupAssign" && this.completionsQuery != this.getInputValueAsQuery()
+      this.completerName == "tabGroupAssign" &&
+      this.completionsQuery != this.getInputValueAsQuery()
     ) {
-      await this.updateCompletions();
-      return this.handleEnterKey(event);
+      const picked = this.completions[this.selection];
+      if (!isJump) {
+        await this.updateCompletions();
+        return this.handleEnterKey(event);
+      } else if (picked?.groupData?.action == "createGroup") {
+        // A direct selection acts on the group the user saw by its number, except for "Create":
+        // its name is the one typed before the last keystrokes. Create the group with the name
+        // typed now. If that name now matches an existing group, there's no "Create" entry, so do
+        // nothing and let the user pick again from the new results.
+        await this.updateCompletions();
+        const index = this.completions.findIndex((c) => c.groupData?.action == "createGroup");
+        if (index == -1) return;
+        this.selection = index;
+        this.updateSelection();
+        return this.handleEnterKey(event, { isJump });
+      }
     }
 
     const isPrimarySearchSuggestion = (c) => c?.isPrimarySuggestion && c?.isCustomSearch;
@@ -293,8 +352,9 @@ class VomnibarUI {
     const waitingOnCompletions = this.completions.length == 0;
     const completion = this.completions[this.selection];
 
-    const openInNewTab = this.forceNewTab || event.shiftKey || event.ctrlKey || event.altKey ||
-      event.metaKey;
+    // For a direct selection, the modifier is part of the shortcut, so only shift opens a new tab.
+    const openInNewTab = this.forceNewTab || event.shiftKey ||
+      (!isJump && (event.ctrlKey || event.altKey || event.metaKey));
 
     // If the user types something and hits enter without selecting a completion from the list,
     // then:
@@ -403,7 +463,17 @@ class VomnibarUI {
   }
 
   renderCompletions(completions) {
-    this.completionList.innerHTML = completions.map((c) => `<li>${c.html}</li>`).join("\n");
+    // The number keys are drawn here, from each result's position, rather than by the completers,
+    // so that every list (including tab groups, group colors and commands) gets them, and so that
+    // they always match the keys handled by jumpIndexFromKeyEvent.
+    const showJumpKeys = getJumpModifier() != null;
+    this.completionList.classList.toggle("jump-keys", showJumpKeys);
+    this.completionList.innerHTML = completions.map((c, i) => {
+      const jumpKey = showJumpKeys && i < jumpKeyCount
+        ? `<span class="jump-key">${(i + 1) % jumpKeyCount}</span>`
+        : "";
+      return `<li>${jumpKey}${c.html}</li>`;
+    }).join("\n");
     this.completionList.style.display = completions.length > 0 ? "block" : "";
   }
 

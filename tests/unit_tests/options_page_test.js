@@ -45,6 +45,25 @@ context("options page", () => {
     assert.equal("example.com", el.value);
   });
 
+  should("show and save the Vomnibar number-key modifier, including off", async () => {
+    const checked = () => document.querySelector("input[name=vomnibarJumpModifier]:checked").value;
+    assert.equal("ctrl", checked());
+
+    document.querySelector("input[name=vomnibarJumpModifier][value='']").checked = true;
+    await optionsPage.saveOptions();
+    assert.equal("", Settings.get("vomnibarJumpModifier"));
+
+    await Settings.set("vomnibarJumpModifier", "alt");
+    await optionsPage.init();
+    assert.equal("alt", checked());
+  });
+
+  should("show the default modifier when the stored one is unknown", async () => {
+    await Settings.set("vomnibarJumpModifier", "ctrlKey");
+    await optionsPage.init();
+    assert.equal("ctrl", document.querySelector("input[name=vomnibarJumpModifier]:checked").value);
+  });
+
   context("backup", () => {
     should("exclude settings which are default values", () => {
       const settings = JSON.parse(optionsPage.prepareBackupSettings());

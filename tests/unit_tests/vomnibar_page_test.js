@@ -205,3 +205,363 @@ context("vomnibar page, tab groups", () => {
     },
   );
 });
+
+context("vomnibar page, direct selection with modifier+digit", () => {
+  let ui, sentMessages, results;
+
+  const urlSuggestions = (count) =>
+    Array.from({ length: count }, (_, i) => ({ html: `r${i + 1}`, url: `http://${i + 1}.com` }));
+
+  // A keydown for modifier+digit, e.g. jumpKey("2", { ctrlKey: true }).
+  const jumpKey = (digit, modifiers) =>
+    newKeyEvent({ type: "keydown", key: digit, code: `Digit${digit}`, ...modifiers });
+
+  const jumpKeyLabels = () =>
+    Array.from(ui.completionList.querySelectorAll(".jump-key")).map((el) => el.textContent);
+
+  const sentMessage = (handler) => sentMessages.find((m) => m.handler == handler);
+
+  setup(async () => {
+    await testHelper.jsdomStub("pages/vomnibar_page.html");
+    await Settings.onLoaded();
+    sentMessages = [];
+    results = urlSuggestions(3);
+    stub(
+      chrome.runtime,
+      "sendMessage",
+      withPromise((message) => {
+        sentMessages.push(message);
+        if (message.handler == "filterCompletions") return results;
+      }),
+    );
+    vomnibarPage.reset();
+    await vomnibarPage.activate();
+    ui = vomnibarPage.ui;
+  });
+
+  teardown(async () => {
+    await Settings.clear();
+  });
+
+  should("number fewer than 10 results from 1", () => {
+    assert.equal(["1", "2", "3"], jumpKeyLabels());
+    assert.isTrue(ui.completionList.classList.contains("jump-keys"));
+  });
+
+  should("number only the first 10 results, using 0 for the 10th", async () => {
+    results = urlSuggestions(12);
+    await ui.update();
+    assert.equal(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"], jumpKeyLabels());
+    assert.equal(12, ui.completionList.children.length);
+  });
+
+  should("renumber the results when they change", async () => {
+    results = urlSuggestions(12);
+    await ui.update();
+    results = urlSuggestions(2);
+    await ui.update();
+    assert.equal(["1", "2"], jumpKeyLabels());
+  });
+
+  should("open the result with that number in the current tab", async () => {
+    await ui.onKeyEvent(jumpKey("2", { ctrlKey: true }));
+    ui.onHidden();
+    assert.equal(
+      { handler: "openUrlInCurrentTab", url: "http://2.com" },
+      Utils.pick(sentMessage("openUrlInCurrentTab"), ["handler", "url"]),
+    );
+  });
+
+  should("open the 10th result with 0", async () => {
+    results = urlSuggestions(12);
+    await ui.update();
+    await ui.onKeyEvent(jumpKey("0", { ctrlKey: true }));
+    ui.onHidden();
+    assert.equal("http://10.com", sentMessage("openUrlInCurrentTab").url);
+  });
+
+  should("open the result in a new tab when shift is added", async () => {
+    await ui.onKeyEvent(jumpKey("1", { ctrlKey: true, shiftKey: true }));
+    ui.onHidden();
+    assert.equal("http://1.com", sentMessage("openUrlInNewTab").url);
+  });
+
+  should("open the result in a new tab when the Vomnibar was opened for a new tab", async () => {
+    ui.setForceNewTab(true);
+    await ui.onKeyEvent(jumpKey("1", { ctrlKey: true }));
+    ui.onHidden();
+    assert.equal("http://1.com", sentMessage("openUrlInNewTab").url);
+  });
+
+  should("leave digits typed without the modifier to the query", async () => {
+    let prevented = false;
+    const event = jumpKey("1", { preventDefault: () => prevented = true });
+    await ui.onKeyEvent(event);
+    assert.isFalse(prevented);
+    assert.equal(undefined, sentMessage("openUrlInCurrentTab"));
+  });
+
+  should("ignore digits with another modifier or an extra modifier", async () => {
+    for (
+      const modifiers of [{ altKey: true }, { metaKey: true }, { ctrlKey: true, altKey: true }]
+    ) {
+      let prevented = false;
+      await ui.onKeyEvent(jumpKey("1", { ...modifiers, preventDefault: () => prevented = true }));
+      assert.isFalse(prevented);
+    }
+    assert.equal(undefined, sentMessage("openUrlInCurrentTab"));
+  });
+
+  should("ignore the keypress event for modifier+digit", async () => {
+    await ui.onKeyEvent(jumpKey("1", { type: "keypress", ctrlKey: true }));
+    assert.equal(undefined, sentMessage("openUrlInCurrentTab"));
+  });
+
+  should("consume modifier+digit when there's no result with that number", async () => {
+    let prevented = false;
+    await ui.onKeyEvent(jumpKey("5", { ctrlKey: true, preventDefault: () => prevented = true }));
+    assert.isTrue(prevented);
+    assert.equal(undefined, sentMessage("openUrlInCurrentTab"));
+    assert.equal(3, ui.completionList.children.length);
+  });
+
+  should("do nothing while there are no results yet", async () => {
+    results = [];
+    await ui.update();
+    await ui.onKeyEvent(jumpKey("1", { ctrlKey: true }));
+    assert.equal(undefined, sentMessage("openUrlInCurrentTab"));
+  });
+
+  should("use event.code, so alt works on macOS, where alt+digit types a symbol", async () => {
+    await Settings.set("vomnibarJumpModifier", "alt");
+    await ui.onKeyEvent(jumpKey("1", { key: "¡", altKey: true }));
+    ui.onHidden();
+    assert.equal("http://1.com", sentMessage("openUrlInCurrentTab").url);
+  });
+
+  should("ignore digits on the numeric keypad", async () => {
+    await ui.onKeyEvent(newKeyEvent({ type: "keydown", key: "1", code: "Numpad1", ctrlKey: true }));
+    assert.equal(undefined, sentMessage("openUrlInCurrentTab"));
+  });
+
+  should("show no numbers and ignore modifier+digit when turned off", async () => {
+    await Settings.set("vomnibarJumpModifier", "");
+    await ui.update();
+    assert.equal([], jumpKeyLabels());
+    assert.isFalse(ui.completionList.classList.contains("jump-keys"));
+    let prevented = false;
+    await ui.onKeyEvent(jumpKey("1", { ctrlKey: true, preventDefault: () => prevented = true }));
+    assert.isFalse(prevented);
+    assert.equal(undefined, sentMessage("openUrlInCurrentTab"));
+  });
+
+  should("search the typed query when the primary custom search result is picked", async () => {
+    userSearchEngines.set("e: https://example.com/?q=%s Example");
+    ui.setQuery("e hello");
+    ui.onInput();
+    results = [
+      {
+        html: "",
+        isCustomSearch: true,
+        isPrimarySuggestion: true,
+        searchUrl: "https://example.com/?q=%s",
+      },
+      {
+        html: "",
+        isCustomSearch: true,
+        insertText: "hello world",
+        url: "https://example.com/?q=hello+world",
+      },
+    ];
+    await ui.update();
+    await ui.onKeyEvent(jumpKey("1", { ctrlKey: true }));
+    ui.onHidden();
+    assert.equal("https://example.com/?q=hello", sentMessage("openUrlInCurrentTab").url);
+  });
+
+  should("open a custom search engine's completion", async () => {
+    userSearchEngines.set("e: https://example.com/?q=%s Example");
+    ui.setQuery("e hello");
+    ui.onInput();
+    results = [
+      {
+        html: "",
+        isCustomSearch: true,
+        isPrimarySuggestion: true,
+        searchUrl: "https://example.com/?q=%s",
+      },
+      {
+        html: "",
+        isCustomSearch: true,
+        insertText: "hello world",
+        url: "https://example.com/?q=hello+world",
+      },
+    ];
+    await ui.update();
+    await ui.onKeyEvent(jumpKey("2", { ctrlKey: true }));
+    ui.onHidden();
+    assert.equal("https://example.com/?q=hello+world", sentMessage("openUrlInCurrentTab").url);
+  });
+
+  should("run the command with that number", async () => {
+    vomnibarPage.reset();
+    await vomnibarPage.activate({ completer: "commands", prefixCount: 3 });
+    ui = vomnibarPage.ui;
+    results = [
+      { html: "", command: { registryEntry: { command: "scrollDown" } } },
+      { html: "", command: { registryEntry: { command: "scrollUp" } } },
+    ];
+    await ui.update();
+    assert.equal(["1", "2"], jumpKeyLabels());
+    await ui.onKeyEvent(jumpKey("2", { ctrlKey: true }));
+    await ui.onHidden();
+    const message = sentMessage("runNormalModeCommand");
+    assert.equal("scrollUp", message.command.command);
+    assert.equal(3, message.count);
+  });
+
+  should("switch to the tab group with that number (ZG)", async () => {
+    vomnibarPage.reset();
+    await vomnibarPage.activate({ completer: "tabGroups" });
+    ui = vomnibarPage.ui;
+    results = [
+      { html: "", tabId: 11, groupData: null },
+      { html: "", tabId: 22, groupData: null },
+    ];
+    await ui.update();
+    assert.equal(["1", "2"], jumpKeyLabels());
+    await ui.onKeyEvent(jumpKey("2", { ctrlKey: true }));
+    ui.onHidden();
+    assert.equal(22, sentMessage("selectSpecificTab").id);
+  });
+});
+
+context("vomnibar page, direct selection in zg", () => {
+  let ui, sentMessages, results;
+
+  const jumpKey = (digit) =>
+    newKeyEvent({ type: "keydown", key: digit, code: `Digit${digit}`, ctrlKey: true });
+  const jumpKeyLabels = () =>
+    Array.from(ui.completionList.querySelectorAll(".jump-key")).map((el) => el.textContent);
+  const sentMessage = (handler) => sentMessages.find((m) => m.handler == handler);
+
+  setup(async () => {
+    await testHelper.jsdomStub("pages/vomnibar_page.html");
+    await Settings.onLoaded();
+    sentMessages = [];
+    stub(
+      chrome.runtime,
+      "sendMessage",
+      withPromise((message) => {
+        sentMessages.push(message);
+        if (message.handler != "filterCompletions") return;
+        if (message.completerName == "tabGroupColors") {
+          return ["grey", "blue", "red"].map((color) => ({
+            html: "",
+            groupData: { action: "setColor", color },
+          }));
+        }
+        return results;
+      }),
+    );
+    results = [
+      { html: "", groupData: { action: "addToGroup", groupId: 1 } },
+      { html: "", groupData: { action: "addToGroup", groupId: 2 } },
+    ];
+    vomnibarPage.reset();
+    await vomnibarPage.activate({ completer: "tabGroupAssign", selectFirst: true });
+    ui = vomnibarPage.ui;
+  });
+
+  should("add the tabs to the group with that number", async () => {
+    assert.equal(["1", "2"], jumpKeyLabels());
+    await ui.onKeyEvent(jumpKey("2"));
+    ui.onHidden();
+    assert.equal(2, sentMessage("addTabsToGroup").groupId);
+  });
+
+  should("create a group with the Create entry, then pick its color by number", async () => {
+    ui.setQuery("News");
+    results = [
+      { html: "", groupData: { action: "addToGroup", groupId: 1 } },
+      { html: "", groupData: { action: "createGroup", name: "News" } },
+    ];
+    await ui.update();
+    await ui.onKeyEvent(jumpKey("2"));
+    assert.equal("tabGroupColors", ui.completerName);
+    assert.equal(["1", "2", "3"], jumpKeyLabels());
+
+    await ui.onKeyEvent(jumpKey("3"));
+    ui.onHidden();
+    assert.equal(
+      { name: "News", color: "red" },
+      Utils.pick(sentMessage("createTabGroup"), ["name", "color"]),
+    );
+  });
+
+  should(
+    "create the group with the name typed now, when Create was picked before it updated",
+    async () => {
+      // The results shown are for "Ne"; the user has since typed "News".
+      ui.completions = [{ html: "", groupData: { action: "createGroup", name: "Ne" } }];
+      ui.completionsQuery = "Ne";
+      ui.setQuery("News");
+      results = [{ html: "", groupData: { action: "createGroup", name: "News" } }];
+      await ui.onKeyEvent(jumpKey("1"));
+      assert.equal("tabGroupColors", ui.completerName);
+      assert.equal("News", ui.pendingGroupName);
+    },
+  );
+
+  should("not create a group when the name typed now matches an existing group", async () => {
+    ui.completions = [{ html: "", groupData: { action: "createGroup", name: "Wor" } }];
+    ui.completionsQuery = "Wor";
+    ui.setQuery("Work");
+    results = [{ html: "", groupData: { action: "addToGroup", groupId: 1 } }];
+    await ui.onKeyEvent(jumpKey("1"));
+    assert.equal("tabGroupAssign", ui.completerName);
+    assert.equal(null, ui.pendingGroupName);
+    assert.equal(undefined, sentMessage("addTabsToGroup"));
+    assert.equal(1, ui.completionList.children.length);
+  });
+
+  should("not pick a color when the key which picked Create repeats", async () => {
+    ui.setQuery("News");
+    results = [{ html: "", groupData: { action: "createGroup", name: "News" } }];
+    await ui.update();
+    await ui.onKeyEvent(jumpKey("1"));
+    assert.equal("tabGroupColors", ui.completerName);
+
+    let prevented = false;
+    await ui.onKeyEvent({ ...jumpKey("1"), repeat: true, preventDefault: () => prevented = true });
+    assert.isTrue(prevented);
+    ui.onHidden();
+    assert.equal("tabGroupColors", ui.completerName);
+    assert.equal(undefined, sentMessage("createTabGroup"));
+  });
+
+  should("not pick a color when Enter, which picked Create, repeats", async () => {
+    ui.setQuery("News");
+    results = [{ html: "", groupData: { action: "createGroup", name: "News" } }];
+    await ui.update();
+    await ui.onKeyEvent(newKeyEvent({ type: "keypress", key: "Enter" }));
+    assert.equal("tabGroupColors", ui.completerName);
+
+    await ui.onKeyEvent(newKeyEvent({ type: "keypress", key: "Enter", repeat: true }));
+    ui.onHidden();
+    assert.equal("tabGroupColors", ui.completerName);
+    assert.equal(undefined, sentMessage("createTabGroup"));
+  });
+
+  should(
+    "act on the result shown with that number, even if results for newer text are pending",
+    async () => {
+      // The user typed "News", but the results shown are still those for the empty query.
+      ui.setQuery("News");
+      await ui.onKeyEvent(jumpKey("1"));
+      ui.onHidden();
+      assert.equal(1, sentMessage("addTabsToGroup").groupId);
+      assert.equal("tabGroupAssign", ui.completerName);
+    },
+  );
+});

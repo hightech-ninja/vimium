@@ -23,6 +23,7 @@ const options = {
   settingsVersion: "string", // This is a hidden field.
   smoothScroll: "boolean",
   userDefinedLinkHintCss: "string",
+  vomnibarJumpModifier: "option",
   waitForEnterForFilteredHints: "boolean",
 };
 
@@ -128,7 +129,12 @@ function setFormFromSettings(settings) {
         el.value = value;
         break;
       case "option": {
-        const optionEl = document.querySelector(`input[name="${optionName}"][value="${value}"]`);
+        // Fall back to the default if there's no input for the value, e.g. one from a backup made
+        // by another version of Vimium.
+        const optionEl = document.querySelector(`input[name="${optionName}"][value="${value}"]`) ??
+          document.querySelector(
+            `input[name="${optionName}"][value="${Settings.defaultOptions[optionName]}"]`,
+          );
         optionEl.checked = true;
         break;
       }
