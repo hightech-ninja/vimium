@@ -1342,3 +1342,21 @@ context("GrabBackFocus", () => {
     assert.isTrue(DomUtils.isEditable(document.activeElement));
   });
 });
+
+// Keep this context last: unloading resets Vimium's state for the rest of the page.
+context("Orphaned content script", () => {
+  teardown(() => isEnabledForUrl = true);
+
+  should("unload instead of messaging the background page when checking the URL", async () => {
+    let sent = false;
+    // This is what chrome.runtime looks like after Vimium was reloaded or reinstalled.
+    stub(chrome.runtime, "id", undefined);
+    stub(chrome.runtime, "sendMessage", () => {
+      sent = true;
+      throw new Error("Extension context invalidated.");
+    });
+    await checkIfEnabledForUrl();
+    assert.isFalse(sent);
+    assert.isFalse(isEnabledForUrl);
+  });
+});

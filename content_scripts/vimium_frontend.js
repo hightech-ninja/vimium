@@ -426,6 +426,13 @@ async function initializePreDomReady() {
 
 // Check if Vimium should be enabled or not based on the top frame's URL.
 async function checkIfEnabledForUrl() {
+  // The focus and hashchange listeners call this directly rather than through installListener, so
+  // we check here whether this content script has been orphaned. Otherwise sendMessage throws
+  // "Extension context invalidated", e.g. in tabs which were open when Vimium was reinstalled.
+  if (extensionHasBeenUnloaded()) {
+    onUnload();
+    return;
+  }
   const promises = [];
   promises.push(chrome.runtime.sendMessage({ handler: "initializeFrame" }));
   if (!Settings.isLoaded()) {
