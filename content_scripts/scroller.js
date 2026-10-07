@@ -160,6 +160,29 @@ const firstScrollableElement = function (element = null) {
   }
 };
 
+// Whether element can scroll in either direction along direction's axis.
+const scrollsOnAxis = (element, direction) =>
+  (doesScroll(element, direction, 1, 1) || doesScroll(element, direction, -1, 1)) &&
+  shouldScroll(element, direction);
+
+// From element and its ancestors (crossing shadow DOM boundaries), find the first which can scroll,
+// in any direction, other than the document's scrolling element. Returns null if there is none. We
+// prefer one which scrolls vertically, so that e.g. for a link in a wide code block, we find the
+// pane around the code block. A site's special scrolling element (see getSpecialScrollingElement)
+// can be found: unlike the document's, its position isn't the window's.
+const findScrollContainer = function (element) {
+  const documentScrollingElement = document.scrollingElement || document.body;
+  const find = (direction) => {
+    let el = element;
+    while (el && (el !== documentScrollingElement)) {
+      if (scrollsOnAxis(el, direction)) return el;
+      el = DomUtils.getContainingElement(el) || el.getRootNode().host;
+    }
+    return null;
+  };
+  return find("y") ?? find("x");
+};
+
 const checkVisibility = function (element) {
   // If the activated element has been scrolled completely offscreen, then subsequent changes in its
   // scroll position will not provide any more visual feedback to the user. Therefore, we deactivate
@@ -376,7 +399,7 @@ const Scroller = {
       return;
     }
 
-    if (!activatedElement) {
+    if (!activatedElement?.isConnected) {
       activatedElement = (getScrollingElement() && firstScrollableElement()) ||
         getScrollingElement();
     }
@@ -394,7 +417,7 @@ const Scroller = {
   },
 
   scrollTo(direction, pos) {
-    if (!activatedElement) {
+    if (!activatedElement?.isConnected) {
       activatedElement = (getScrollingElement() && firstScrollableElement()) ||
         getScrollingElement();
     }
@@ -408,9 +431,28 @@ const Scroller = {
     return CoreScroller.scroll(element, direction, amount);
   },
 
+  // Make element the target of scrolling commands: they scroll its nearest scrollable ancestor. We
+  // keep that ancestor rather than element itself, because pages often re-render the items inside
+  // a scrolling pane, but rarely the pane.
+  selectElement(element) {
+    activatedElement = findScrollContainer(element) ?? element;
+  },
+
+  // The element from which scrolling commands search for an element to scroll, or null if there
+  // isn't one yet (or it has been removed from the page).
+  activeElement() {
+    return activatedElement?.isConnected ? activatedElement : null;
+  },
+
+  // The element which scrolling commands scroll, or null if they scroll the document.
+  activeScrollContainer() {
+    const element = this.activeElement() ?? (getScrollingElement() && firstScrollableElement());
+    return element ? findScrollContainer(element) : null;
+  },
+
   // Is element scrollable and not the activated element?
   isScrollableElement(element) {
-    if (!activatedElement) {
+    if (!activatedElement?.isConnected) {
       activatedElement = (getScrollingElement() && firstScrollableElement()) ||
         getScrollingElement();
     }
@@ -420,7 +462,7 @@ const Scroller = {
   // Scroll the top, bottom, left and right of element into view. The is used by visual mode to
   // ensure the focus remains visible.
   scrollIntoView(element) {
-    if (!activatedElement) {
+    if (!activatedElement?.isConnected) {
       activatedElement = getScrollingElement() && firstScrollableElement();
     }
     const rects = element.getClientRects();

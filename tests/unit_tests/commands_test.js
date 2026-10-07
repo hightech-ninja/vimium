@@ -222,6 +222,15 @@ context("Validate commands and options data structures", () => {
     }
   });
 
+  should("map gS to selecting the scroll target by default", async () => {
+    await Commands.loadKeyMappings("");
+    const entry = Commands.keyToRegistryEntry["gS"];
+    assert.equal("LinkHints.activateMode", entry.command);
+    assert.equal({ action: "select-scroll-target" }, entry.options);
+    // gs (view source) is a separate mapping.
+    assert.equal("toggleViewSource", Commands.keyToRegistryEntry["gs"].command);
+  });
+
   should("have valid commands for each default key mapping", () => {
     const commandsByName = Utils.keyBy(allCommands, "name");
     for (const [key, commandString] of Object.entries(defaultKeyMappings)) {

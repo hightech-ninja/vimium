@@ -148,6 +148,13 @@ const FOCUS_LINK = {
   },
 };
 
+// Selects the element which scrolling commands scroll (its nearest scrollable ancestor). Unlike the
+// other modes, this doesn't interact with the page at all: no click, focus or hover.
+const SELECT_SCROLL_TARGET = {
+  name: "select-scroll-target",
+  indicator: "Select scroll target",
+};
+
 const availableModes = [
   OPEN_IN_CURRENT_TAB,
   OPEN_IN_NEW_BG_TAB,
@@ -159,6 +166,7 @@ const availableModes = [
   COPY_LINK_TEXT,
   HOVER_LINK,
   FOCUS_LINK,
+  SELECT_SCROLL_TARGET,
 ];
 
 const HintCoordinator = {
@@ -324,6 +332,9 @@ const LinkHints = {
         break;
       case "focus":
         mode = FOCUS_LINK;
+        break;
+      case "select-scroll-target":
+        mode = SELECT_SCROLL_TARGET;
         break;
     }
 
@@ -828,7 +839,11 @@ class LinkHintsMode {
       clickEl = localHint.element;
       HintCoordinator.onExit.push((isSuccess) => {
         if (isSuccess) {
-          if (localHint.reason === "Frame.") {
+          if (this.mode === SELECT_SCROLL_TARGET) {
+            Scroller.selectElement(clickEl);
+            // Scrolling commands are handled by the focused frame, so it must be this one.
+            if (!windowIsFocused()) Utils.nextTick(() => focusThisFrame({}));
+          } else if (localHint.reason === "Frame.") {
             return Utils.nextTick(() => focusThisFrame({ highlight: true }));
           } else if (localHint.reason === "Scroll.") {
             // Tell the scroller that this is the activated element.

@@ -189,8 +189,9 @@ const allCommands = [
     name: "LinkHints.activateMode",
     desc: "Open a link in the current tab",
     options: {
-      action: "one of `hover`, `focus`, `copy-text`. When a link is selected, " +
-        "instead of clicking on the link, perform the specified action.",
+      action: "one of `hover`, `focus`, `copy-text`, `select-scroll-target`. When a link is " +
+        "selected, instead of clicking on the link, perform the specified action. " +
+        "`select-scroll-target` makes scrolling commands scroll the pane which contains it.",
     },
     group: "navigation",
     advanced: true,

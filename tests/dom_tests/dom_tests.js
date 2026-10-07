@@ -40,11 +40,12 @@ HintCoordinator.sendMessage = (name, request) => {
   return request;
 };
 
-const activateLinkHintsMode = () => {
-  HintCoordinator.getHintDescriptors({ modeIndex: 0 }, {}, () => {});
+const activateLinkHintsMode = (mode = OPEN_IN_CURRENT_TAB) => {
+  const modeIndex = availableModes.indexOf(mode);
+  HintCoordinator.getHintDescriptors({ modeIndex }, {}, () => {});
   HintCoordinator.activateMode({
     frameIdToHintDescriptors: {},
-    modeIndex: 0,
+    modeIndex,
     originatingFrameId: frameId,
   });
   return HintCoordinator.linkHintsMode;
@@ -486,6 +487,121 @@ context("Overlapping link hint markers", () => {
       sendKeyboardEvent(" ", "keydown", { shiftKey: true });
       assert.isTrue(isShown(active));
     });
+  });
+});
+
+context("Selecting the scroll target with link hints", () => {
+  let mode;
+  const pane = (id, left, content) =>
+    `<div id="${id}" style="position: absolute; left: ${left}px; top: 200px; width: 150px;
+      height: 100px; overflow: auto;">${content}<div style="height: 1000px;"></div></div>`;
+  const selectByHint = (id) => {
+    mode = activateLinkHintsMode(SELECT_SCROLL_TARGET);
+    const marker = mode.hintMarkers.find((m) => m.localHint.element.id === id);
+    sendKeyboardEvents(marker.hintString);
+  };
+  const $ = (id) => document.getElementById(id);
+
+  setup(() => {
+    initializeModeState();
+    stubSettings("filterLinkHints", false);
+    stubSettings("linkHintCharacters", "ab");
+    stubSettings("smoothScroll", false);
+    stub(globalThis, "windowIsFocused", () => true);
+    $("test-div").innerHTML = pane("pane1", 200, `<a id="link1" href="#">one</a>`) +
+      pane(
+        "pane2",
+        400,
+        `<a id="link2" href="#">two</a> <input id="input2">
+         <details id="details2"><summary>more</summary>text</details>`,
+      ) +
+      `<a id="outside" href="#" style="position: absolute; left: 200px; top: 350px;">out</a>`;
+  });
+
+  teardown(() => {
+    mode?.deactivateMode();
+    $("test-div").innerHTML = "";
+    for (const el of document.querySelectorAll(".vimium-flash")) el.remove();
+  });
+
+  should("select the pane which contains the chosen element", () => {
+    selectByHint("link2");
+    assert.isTrue($("pane2") === Scroller.activeElement());
+    assert.isTrue($("pane2") === Scroller.activeScrollContainer());
+  });
+
+  should("make scrolling commands scroll the selected pane", () => {
+    selectByHint("link2");
+    Scroller.scrollBy("y", 30);
+    assert.equal(30, $("pane2").scrollTop);
+    assert.equal(0, $("pane1").scrollTop);
+    Scroller.scrollTo("y", "max");
+    assert.equal($("pane2").scrollHeight - $("pane2").clientHeight, $("pane2").scrollTop);
+  });
+
+  should("not click, focus or toggle the chosen element", () => {
+    let clicked = false;
+    $("link2").addEventListener("click", () => clicked = true);
+    selectByHint("link2");
+    assert.isFalse(clicked);
+    selectByHint("input2");
+    assert.isFalse(document.activeElement === $("input2"));
+    assert.isTrue($("pane2") === Scroller.activeElement());
+    selectByHint("details2");
+    assert.isFalse($("details2").open);
+  });
+
+  should("select the element itself when no ancestor scrolls", () => {
+    selectByHint("outside");
+    assert.isTrue($("outside") === Scroller.activeElement());
+    assert.equal(null, Scroller.activeScrollContainer());
+  });
+
+  should("have no active element after it's removed from the page", () => {
+    selectByHint("link2");
+    $("pane2").remove();
+    assert.equal(null, Scroller.activeElement());
+  });
+
+  should("focus the frame of the chosen element, which handles scrolling commands", () => {
+    let focusedFrame = false;
+    stub(globalThis, "focusThisFrame", () => focusedFrame = true);
+    // Run nextTick callbacks now. Waiting for them would also run other tests' pending callbacks.
+    stub(Utils, "nextTick", (fn) => fn());
+    selectByHint("link2");
+    assert.isFalse(focusedFrame);
+    stub(globalThis, "windowIsFocused", () => false);
+    selectByHint("link1");
+    assert.isTrue(focusedFrame);
+    assert.isTrue($("pane1") === Scroller.activeElement());
+  });
+
+  should("choose a new scroll target when the selected one was removed", () => {
+    Scroller.selectElement($("pane2"));
+    $("pane2").remove();
+    Scroller.scrollBy("y", 30);
+    assert.isTrue(Scroller.activeElement() != null);
+  });
+
+  should("prefer the pane which scrolls vertically to a horizontal scroller inside it", () => {
+    $("pane2").insertAdjacentHTML(
+      "afterbegin",
+      `<pre style="width: 100px; overflow-x: auto;"><a id="code-link" href="#">${
+        "x".repeat(200)
+      }</a></pre>`,
+    );
+    Scroller.selectElement($("code-link"));
+    assert.isTrue($("pane2") === Scroller.activeElement());
+  });
+
+  should("treat a site's special scrolling element as a pane", () => {
+    specialScrollingElementMap[location.host] = "#pane2";
+    try {
+      Scroller.selectElement($("link2"));
+      assert.isTrue($("pane2") === Scroller.activeScrollContainer());
+    } finally {
+      delete specialScrollingElementMap[location.host];
+    }
   });
 });
 

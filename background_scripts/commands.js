@@ -438,6 +438,7 @@ const defaultKeyMappings = {
   "F": "LinkHints.activateModeToOpenInNewTab",
   "<a-f>": "LinkHints.activateModeWithQueue",
   "yf": "LinkHints.activateModeToCopyLinkUrl",
+  "gS": "LinkHints.activateMode action=select-scroll-target",
 
   // Using find
   "/": "enterFindMode",
