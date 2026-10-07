@@ -565,3 +565,42 @@ context("vomnibar page, direct selection in zg", () => {
     },
   );
 });
+
+context("vomnibar page, Russian layout", () => {
+  let ui;
+
+  // A keydown as Chrome produces it with the Russian layout active.
+  const ruKey = (key, code, modifiers) => newKeyEvent({ key, code, ...modifiers });
+
+  setup(async () => {
+    await testHelper.jsdomStub("pages/vomnibar_page.html");
+    await Settings.onLoaded();
+    stub(chrome.runtime, "sendMessage", withPromise(() => []));
+    vomnibarPage.reset();
+    await vomnibarPage.activate();
+    ui = vomnibarPage.ui;
+  });
+
+  teardown(async () => {
+    await Settings.clear();
+  });
+
+  should("read ctrl+j/k/n/p by their physical keys with ignoreKeyboardLayout", async () => {
+    await Settings.set("ignoreKeyboardLayout", true);
+    assert.equal("down", ui.actionFromKeyEvent(ruKey("о", "KeyJ", { ctrlKey: true })));
+    assert.equal("up", ui.actionFromKeyEvent(ruKey("л", "KeyK", { ctrlKey: true })));
+    assert.equal("down", ui.actionFromKeyEvent(ruKey("т", "KeyN", { ctrlKey: true })));
+    assert.equal("up", ui.actionFromKeyEvent(ruKey("з", "KeyP", { ctrlKey: true })));
+  });
+
+  should("not read ctrl+j by its physical key without ignoreKeyboardLayout", async () => {
+    await Settings.set("ignoreKeyboardLayout", false);
+    assert.equal(null, ui.actionFromKeyEvent(ruKey("о", "KeyJ", { ctrlKey: true })));
+  });
+
+  should("leave Cyrillic text typed into the query alone", async () => {
+    await Settings.set("ignoreKeyboardLayout", true);
+    assert.equal(null, ui.actionFromKeyEvent(ruKey("о", "KeyJ")));
+    assert.equal(null, ui.actionFromKeyEvent(ruKey("П", "KeyG", { shiftKey: true })));
+  });
+});

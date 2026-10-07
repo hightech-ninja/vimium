@@ -337,6 +337,15 @@ context("Alphabet link hints", () => {
     );
   });
 
+  should("narrow the hints by physical key with a Russian layout and ignoreKeyboardLayout", () => {
+    stubSettings("ignoreKeyboardLayout", true);
+    sendKeyboardEvent("ф", "keydown", { code: "KeyA" });
+    assert.equal(
+      ["", "none", ""],
+      mode.hintMarkers.map((m) => m.element.style.display),
+    );
+  });
+
   should("generate the correct number of alphabet hints", () => {
     const alphabetHints = new AlphabetHints();
     for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
@@ -1030,6 +1039,56 @@ context("Insert mode", () => {
     insertMode.exit();
     sendKeyboardEvent("m");
     assert.equal("m", commandName);
+  });
+});
+
+// With the Russian layout active and ignoreKeyboardLayout on, command keys are read by their
+// physical key, while text typed in insert mode reaches the page unchanged.
+context("Russian keyboard layout with ignoreKeyboardLayout", () => {
+  // Cyrillic characters on the same physical keys as the US letters/punctuation used below.
+  const ruCodes = { "ь": "KeyM", "я": "KeyZ", "з": "KeyP", "ж": "Semicolon", "о": "KeyJ" };
+  const sendRuKey = (key) =>
+    sendKeyboardEvent(key, "keydown", { code: ruCodes[key] ?? `Digit${key}` });
+
+  setup(() => {
+    initializeModeState();
+    stubSettings("ignoreKeyboardLayout", true);
+  });
+
+  should("invoke commands for mapped keys", () => {
+    sendRuKey("ь");
+    assert.equal("m", commandName);
+  });
+
+  should("accept a count", () => {
+    sendRuKey("5");
+    sendRuKey("ь");
+    assert.equal("m", commandName);
+    assert.equal(5, commandCount);
+  });
+
+  should("invoke multi-key commands, with a count", () => {
+    sendRuKey("1");
+    sendRuKey("2");
+    sendRuKey("я");
+    sendRuKey("з");
+    assert.equal("zp", commandName);
+    assert.equal(12, commandCount);
+  });
+
+  should("invoke mappings containing punctuation", () => {
+    const normalMode = initializeModeState();
+    normalMode.setKeyMapping({ ";": { j: { options: {}, command: ";j" } } });
+    sendRuKey("ж");
+    sendRuKey("о");
+    assert.equal(";j", commandName);
+  });
+
+  should("not translate keys typed in insert mode", () => {
+    new InsertMode({ global: true });
+    const passedToPage = sendRuKey("ь");
+    assert.isTrue(passedToPage);
+    assert.equal(null, commandName);
   });
 });
 
