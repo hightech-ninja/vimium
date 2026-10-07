@@ -383,6 +383,9 @@ const messageHandlers = {
   showMessage(request) {
     HUD.show(request.message, 2000);
   },
+  tabSelectionChanged({ count }) {
+    TabSelection.count = count;
+  },
 };
 
 async function handleMessage(request, sender) {
@@ -494,6 +497,27 @@ const HelpDialog = {
   },
 };
 
+// Mirrors how many tabs are selected (highlighted) in this window while this tab is active, so that
+// Escape can clear a selection made with zz / ZZ, and otherwise reaches the page as usual. The
+// background page sends updates when the selection or the active tab changes.
+const TabSelection = {
+  count: 1,
+
+  hasSelection() {
+    return this.count > 1;
+  },
+
+  clear() {
+    this.count = 1;
+    chrome.runtime.sendMessage({ handler: "clearTabSelection" });
+  },
+};
+
+// Only the active tab is told about changes, so forget the selection when we stop being it.
+globalThis.document?.addEventListener("visibilitychange", () => {
+  if (document.hidden) TabSelection.count = 1;
+});
+
 const testEnv = globalThis.window == null;
 if (!testEnv) {
   initWindowIsFocused();
@@ -503,6 +527,7 @@ if (!testEnv) {
 
 Object.assign(globalThis, {
   HelpDialog,
+  TabSelection,
   handlerStack,
   windowIsFocused,
   // These are exported for normal mode and link-hints mode.

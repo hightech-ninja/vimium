@@ -158,6 +158,12 @@ globalThis.chrome = {
         return true;
       },
     },
+    onHighlighted: {
+      addListener() {
+        return true;
+      },
+    },
+    highlight(_properties) {},
     query() {
       return true;
     },

@@ -450,6 +450,8 @@ const defaultKeyMappings = {
   "o": "Vomnibar.activate",
   "O": "Vomnibar.activateInNewTab",
   "T": "Vomnibar.activateTabSelection",
+  "ZG": "Vomnibar.activateTabGroupSelection",
+  "zg": "Vomnibar.activateGroupAssign",
   "b": "Vomnibar.activateBookmarks",
   "B": "Vomnibar.activateBookmarksInNewTab",
   ":": "Vomnibar.activateCommandSelection",
@@ -480,6 +482,12 @@ const defaultKeyMappings = {
   "zi": "zoomIn",
   "zo": "zoomOut",
   "z0": "zoomReset",
+  "zn": "nextTabGroup",
+  "zN": "previousTabGroup",
+  "za": "collapseTabGroup",
+  "zA": "collapseAllTabGroups",
+  "zz": "selectNextTabForGroup",
+  "ZZ": "selectPreviousTabForGroup",
 
   // Marks
   "m": "Marks.activateCreateMode",

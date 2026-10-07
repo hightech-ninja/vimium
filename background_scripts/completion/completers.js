@@ -58,6 +58,9 @@ export class Suggestion {
   // The generated HTML string for showing this suggestion in the Vomnibar.
   html;
   searchUrl;
+  // Set by the tab group completers: the group action to take when this suggestion is chosen.
+  // { action: "addToGroup" | "createGroup" | "setColor", groupId, name, color }
+  groupData;
 
   constructor(options) {
     Object.seal(this);
@@ -740,11 +743,12 @@ export class MultiCompleter {
     const query = request.query;
     const queryTerms = request.queryTerms;
 
-    // The only UX where we support showing results when there are no query terms is via
-    // Vomnibar.activateTabSelection, where we show the list of open tabs by recency.
-    const isTabCompleter = this.completers.length == 1 &&
-      this.completers[0] instanceof TabCompleter;
-    if (queryTerms.length == 0 && !isTabCompleter) {
+    // The only UXes where we support showing results when there are no query terms are
+    // Vomnibar.activateTabSelection, where we show the list of open tabs by recency, and completers
+    // which opt in via `showResultsWithNoQuery` (e.g. the tab group completers).
+    const showsResultsWithNoQuery = this.completers.length == 1 &&
+      (this.completers[0] instanceof TabCompleter || this.completers[0].showResultsWithNoQuery);
+    if (queryTerms.length == 0 && !showsResultsWithNoQuery) {
       return [];
     }
 

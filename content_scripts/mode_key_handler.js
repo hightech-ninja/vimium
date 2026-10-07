@@ -66,6 +66,10 @@ class KeyHandlerMode extends Mode {
       // If the help dialog loses the focus, then Escape should hide it; see point 2 in #2045.
       HelpDialog.toggle();
       return this.suppressEvent;
+    } else if (isEscape && globalThis.TabSelection?.hasSelection()) {
+      // Like leaving Vim's visual mode: Escape clears a multi-tab selection (zz / ZZ). The page
+      // doesn't get this Escape.
+      return DomUtils.consumeKeyup(event, () => TabSelection.clear());
     } else if (isEscape) {
       // Some links stay "open" after clicking, until you mouse off of them, like Wikipedia's link
       // preview popups. If the user types escape, issue a mouseout event here. See #3073.

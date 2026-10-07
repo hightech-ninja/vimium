@@ -82,6 +82,45 @@ ul {
   color: #777;
   margin-right: 4px;
 }
+
+/* Color swatches for tab group suggestions. These match the colors in Chrome's tab strip. */
+#vomnibar li .group-color {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  vertical-align: middle;
+  margin-right: 5px;
+  background: #888;
+}
+#vomnibar li .group-color-grey {
+  background: #5f6368;
+}
+#vomnibar li .group-color-blue {
+  background: #1a73e8;
+}
+#vomnibar li .group-color-red {
+  background: #d93025;
+}
+#vomnibar li .group-color-yellow {
+  background: #f9ab00;
+}
+#vomnibar li .group-color-green {
+  background: #1e8e3e;
+}
+#vomnibar li .group-color-pink {
+  background: #d01884;
+}
+#vomnibar li .group-color-purple {
+  background: #8430ce;
+}
+#vomnibar li .group-color-cyan {
+  background: #007b83;
+}
+#vomnibar li .group-color-orange {
+  background: #e37400;
+}
+
 #vomnibar li .relevancy {
   position: absolute;
   right: 0;

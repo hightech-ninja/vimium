@@ -59,6 +59,8 @@ class VomnibarUI {
     this.onInput = this.onInput.bind(this);
     this.update = this.update.bind(this);
     this.onHiddenCallback = null;
+    // The name of the tab group being created, while the user chooses its color.
+    this.pendingGroupName = null;
     this.initDom();
     // The user's custom search engine, if they have prefixed their query with the keyword for one
     // of their search engines.
@@ -80,11 +82,17 @@ class VomnibarUI {
     this.forceNewTab = forceNewTab;
   }
 
-  // name: one of [omni, bookmarks, commands, tabs].
+  // name: one of [omni, bookmarks, commands, tabs, tabGroups, tabGroupAssign, tabGroupColors].
   setCompleterName(name) {
     this.completerName = name;
     const capitalize = (s) => s[0].toUpperCase() + s.slice(1);
-    const placeholder = (name == "omni") ? "" : capitalize(name);
+    const placeholders = {
+      omni: "",
+      tabGroups: "Tab groups",
+      tabGroupAssign: "Add to tab group, or name a new group",
+      tabGroupColors: "Color of the new tab group",
+    };
+    const placeholder = placeholders[name] ?? capitalize(name);
     this.input.setAttribute("placeholder", placeholder);
     this.reset();
   }
@@ -126,6 +134,8 @@ class VomnibarUI {
   reset() {
     this.input.value = "";
     this.completions = [];
+    // The query which this.completions are for.
+    this.completionsQuery = null;
     this.renderCompletions(this.completions);
     this.previousInputValue = null;
     this.activeUserSearchEngine = null;
@@ -264,6 +274,16 @@ class VomnibarUI {
   }
 
   async handleEnterKey(event) {
+    // When adding tabs to a group, acting on suggestions for an outdated query (e.g. the existing
+    // groups shown before the user typed a new group's name) would add the tabs to the wrong group.
+    // So first wait for the suggestions for the current query.
+    if (
+      this.completerName == "tabGroupAssign" && this.completionsQuery != this.getInputValueAsQuery()
+    ) {
+      await this.updateCompletions();
+      return this.handleEnterKey(event);
+    }
+
     const isPrimarySearchSuggestion = (c) => c?.isPrimarySuggestion && c?.isCustomSearch;
     let query = this.input.value.trim();
 
@@ -335,6 +355,12 @@ class VomnibarUI {
           count: this.prefixCount,
         });
       });
+    } else if (completion.groupData?.action == "createGroup") {
+      // Keep the Vomnibar open, and ask for the new group's color.
+      this.pendingGroupName = completion.groupData.name;
+      this.initialSelectionValue = 0;
+      this.setCompleterName("tabGroupColors");
+      await this.update();
     } else {
       this.hide(() => this.openCompletion(completion, openInNewTab));
     }
@@ -366,6 +392,7 @@ class VomnibarUI {
     if (this.lastRequestId != requestId) return;
 
     this.completions = results;
+    this.completionsQuery = query;
     this.selection = this.completions[0]?.autoSelect ? 0 : this.initialSelectionValue;
     this.renderCompletions(this.completions);
     this.selection = Math.min(
@@ -437,7 +464,19 @@ class VomnibarUI {
   }
 
   openCompletion(completion, openInNewTab) {
-    if (completion.description == "tab") {
+    const groupAction = completion.groupData?.action;
+    if (groupAction == "addToGroup") {
+      chrome.runtime.sendMessage({
+        handler: "addTabsToGroup",
+        groupId: completion.groupData.groupId,
+      });
+    } else if (groupAction == "setColor") {
+      chrome.runtime.sendMessage({
+        handler: "createTabGroup",
+        name: this.pendingGroupName,
+        color: completion.groupData.color,
+      });
+    } else if (completion.tabId != null) {
       chrome.runtime.sendMessage({ handler: "selectSpecificTab", id: completion.tabId });
     } else {
       this.launchUrl(completion.url, openInNewTab);

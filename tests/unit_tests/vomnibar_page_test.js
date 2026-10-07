@@ -153,3 +153,55 @@ context("vomnibar page", () => {
     assert.equal(["K", "gt"], keys);
   });
 });
+
+context("vomnibar page, tab groups", () => {
+  let ui, sentMessages;
+
+  setup(async () => {
+    await testHelper.jsdomStub("pages/vomnibar_page.html");
+    sentMessages = [];
+    stub(
+      chrome.runtime,
+      "sendMessage",
+      withPromise((message) => {
+        sentMessages.push(message);
+        if (message.handler != "filterCompletions") return;
+        if (message.completerName == "tabGroupAssign") {
+          return [{ html: "", groupData: { action: "createGroup", name: message.query } }];
+        } else if (message.completerName == "tabGroupColors") {
+          return [{ html: "", groupData: { action: "setColor", color: "blue" } }];
+        }
+        return [];
+      }),
+    );
+    vomnibarPage.reset();
+    await vomnibarPage.activate({ completer: "tabGroupAssign", selectFirst: true });
+    ui = vomnibarPage.ui;
+  });
+
+  should("create a group in two steps: name, then color", async () => {
+    ui.setQuery("News");
+    await ui.update();
+    await ui.onKeyEvent(newKeyEvent({ type: "keypress", key: "Enter" }));
+    assert.equal("tabGroupColors", ui.completerName);
+    assert.equal("", ui.input.value);
+
+    await ui.onKeyEvent(newKeyEvent({ type: "keypress", key: "Enter" }));
+    ui.onHidden();
+    const created = sentMessages.find((m) => m.handler == "createTabGroup");
+    assert.equal({ name: "News", color: "blue" }, Utils.pick(created, ["name", "color"]));
+  });
+
+  should(
+    "not act on outdated suggestions when enter is pressed before new ones arrive",
+    async () => {
+      // The suggestions shown are for the empty query: an existing group.
+      ui.completions = [{ html: "", groupData: { action: "addToGroup", groupId: 1 } }];
+      ui.completionsQuery = "";
+      ui.setQuery("News");
+      await ui.onKeyEvent(newKeyEvent({ type: "keypress", key: "Enter" }));
+      assert.equal("tabGroupColors", ui.completerName);
+      assert.isFalse(sentMessages.some((m) => m.handler == "addTabsToGroup"));
+    },
+  );
+});

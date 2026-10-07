@@ -183,7 +183,7 @@ context("link hints for image maps", () => {
 const sendKeyboardEvent = (key, type, extra) => {
   if (type == null) type = "keydown";
   if (extra == null) extra = {};
-  handlerStack.bubbleEvent(
+  return handlerStack.bubbleEvent(
     type,
     Object.assign(extra, {
       type,
@@ -910,6 +910,65 @@ context("Insert mode", () => {
     insertMode.exit();
     sendKeyboardEvent("m");
     assert.equal("m", commandName);
+  });
+});
+
+context("Escape with a multi-tab selection", () => {
+  let sent;
+
+  setup(() => {
+    initializeModeState();
+    sent = [];
+    stub(chrome.runtime, "sendMessage", (message) => sent.push(message.handler));
+  });
+
+  teardown(() => TabSelection.count = 1);
+
+  should("clear the selection, and not pass the Escape to the page", () => {
+    messageHandlers.tabSelectionChanged({ count: 3 });
+    const passedToPage = sendKeyboardEvent("Escape");
+    assert.isFalse(passedToPage);
+    assert.equal(["clearTabSelection"], sent);
+    // A second Escape reaches the page.
+    assert.isTrue(sendKeyboardEvent("Escape"));
+    assert.equal(["clearTabSelection"], sent);
+  });
+
+  should("pass the Escape to the page without a selection", () => {
+    messageHandlers.tabSelectionChanged({ count: 1 });
+    assert.isTrue(sendKeyboardEvent("Escape"));
+    assert.equal([], sent);
+  });
+
+  should("first reset a partly typed command", () => {
+    messageHandlers.tabSelectionChanged({ count: 2 });
+    sendKeyboardEvent("z");
+    sendKeyboardEvent("Escape");
+    assert.equal([], sent);
+    sendKeyboardEvent("Escape");
+    assert.equal(["clearTabSelection"], sent);
+  });
+
+  should("first leave insert mode", () => {
+    messageHandlers.tabSelectionChanged({ count: 2 });
+    const insertMode = new InsertMode({ global: true });
+    sendKeyboardEvent("Escape");
+    assert.isFalse(insertMode.modeIsActive);
+    assert.equal([], sent);
+    sendKeyboardEvent("Escape");
+    assert.equal(["clearTabSelection"], sent);
+  });
+
+  should("forget the selection when the tab is hidden", () => {
+    messageHandlers.tabSelectionChanged({ count: 2 });
+    Object.defineProperty(document, "hidden", { value: true, configurable: true });
+    try {
+      document.dispatchEvent(new Event("visibilitychange"));
+    } finally {
+      delete document.hidden;
+    }
+    assert.isTrue(sendKeyboardEvent("Escape"));
+    assert.equal([], sent);
   });
 });
 

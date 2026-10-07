@@ -1,7 +1,7 @@
 import "./test_helper.js";
 import { withPromise } from "./test_helper.js";
 import "../../lib/settings.js";
-import "../../background_scripts/main.js";
+import { sendRequestHandlers } from "../../background_scripts/main.js";
 import { RegistryEntry } from "../../background_scripts/commands.js";
 
 context("HintCoordinator", () => {
@@ -210,6 +210,61 @@ context("majorVersionHasIncreased", () => {
     assert.equal(false, majorVersionHasIncreased("2.0.0"));
     shoulda.stub(Utils, "getCurrentVersion", () => "2.1.0");
     assert.equal(true, majorVersionHasIncreased("2.0.0"));
+  });
+});
+
+context("selectTab commands with tab groups", () => {
+  let activatedId;
+  // Tab 2 and 3 are in collapsed group 99.
+  const tabs = [
+    { id: 1, index: 0, groupId: -1, windowId: 1 },
+    { id: 2, index: 1, groupId: 99, windowId: 1 },
+    { id: 3, index: 2, groupId: 99, windowId: 1 },
+    { id: 4, index: 3, groupId: -1, windowId: 1 },
+  ];
+
+  setup(() => {
+    activatedId = null;
+    stub(chrome.tabs, "query", () => tabs);
+    stub(chrome.tabs, "update", (id) => activatedId = id);
+    stub(chrome, "tabGroups", { query: () => [{ id: 99 }] });
+  });
+
+  should("skip tabs in collapsed groups", async () => {
+    await BackgroundCommands.nextTab({ count: 1, tab: tabs[0] });
+    assert.equal(4, activatedId);
+    await BackgroundCommands.previousTab({ count: 1, tab: tabs[3] });
+    assert.equal(1, activatedId);
+    await BackgroundCommands.lastTab({ count: 2, tab: tabs[3] });
+    assert.equal(1, activatedId);
+  });
+});
+
+context("zg clears the tab selection", () => {
+  let highlighted;
+  const tab = { id: 2, index: 1, windowId: 1 };
+
+  setup(() => {
+    highlighted = null;
+    stub(chrome.tabs, "query", ({ active }) =>
+      active ? [{ ...tab, active: true }] : [
+        { id: 1, index: 0, windowId: 1, highlighted: false, pinned: false },
+        { ...tab, highlighted: true, pinned: false },
+        { id: 3, index: 2, windowId: 1, highlighted: true, pinned: false },
+      ]);
+    stub(chrome.tabs, "group", () => 7);
+    stub(chrome.tabs, "highlight", (args) => highlighted = args);
+    stub(chrome, "tabGroups", { update: () => {} });
+  });
+
+  should("after adding the selected tabs to a group", async () => {
+    await sendRequestHandlers.addTabsToGroup({ tab, groupId: 7 });
+    assert.equal({ windowId: 1, tabs: [1] }, highlighted);
+  });
+
+  should("after creating a group from the selected tabs", async () => {
+    await sendRequestHandlers.createTabGroup({ tab, name: "x", color: "blue" });
+    assert.equal({ windowId: 1, tabs: [1] }, highlighted);
   });
 });
 
