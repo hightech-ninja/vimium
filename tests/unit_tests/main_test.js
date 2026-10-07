@@ -268,6 +268,46 @@ context("zg clears the tab selection", () => {
   });
 });
 
+// So that the next command works in that tab, rather than going into a text box it focuses.
+context("Commands which switch tabs tell the new tab", () => {
+  let sent;
+  const tabs = [
+    { id: 1, index: 0, groupId: -1, windowId: 1 },
+    { id: 2, index: 1, groupId: -1, windowId: 1, active: true },
+    { id: 3, index: 2, groupId: -1, windowId: 1 },
+  ];
+
+  setup(() => {
+    sent = [];
+    stub(chrome.tabs, "query", ({ active }) => active ? [tabs[0]] : tabs);
+    stub(chrome.tabs, "get", (id) => tabs.find((t) => t.id == id));
+    stub(chrome.tabs, "update", (id) => tabs.find((t) => t.id == id));
+    stub(chrome.tabs, "remove", () => Promise.resolve());
+    stub(chrome.tabs, "sendMessage", (id, message) => sent.push([id, message.handler]));
+    stub(chrome, "tabGroups", { query: () => [] });
+  });
+
+  should("J / K", async () => {
+    await BackgroundCommands.nextTab({ count: 1, tab: tabs[1] });
+    assert.equal([[3, "activatedByVimium"]], sent);
+  });
+
+  should("T and ^ (selectSpecificTab)", async () => {
+    await sendRequestHandlers.selectSpecificTab({ id: 3 });
+    assert.equal([[3, "activatedByVimium"]], sent);
+  });
+
+  should("x, for the tab Chrome activates", async () => {
+    await BackgroundCommands.removeTab({ count: 1, tab: tabs[1] });
+    assert.equal([[1, "activatedByVimium"]], sent);
+  });
+
+  should("not fail for a tab without a content script", async () => {
+    stub(chrome.tabs, "sendMessage", () => Promise.reject(new Error("No receiving end")));
+    await BackgroundCommands.nextTab({ count: 1, tab: tabs[1] });
+  });
+});
+
 context("shouldInjectContentScripts", () => {
   should("inject into open tabs after Vimium is installed, reloaded or updated", () => {
     for (const reason of ["install", "update", "chrome_update", "shared_module_update"]) {

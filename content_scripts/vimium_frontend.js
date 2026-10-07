@@ -45,9 +45,9 @@ function isWindowFocusable() {
 }
 
 // If an input grabs the focus before the user has interacted with the page, then grab it back (if
-// the grabBackFocus option is set).
+// the grabBackFocus option is set, or `force` is true: see activatedByVimium).
 class GrabBackFocus extends Mode {
-  constructor() {
+  constructor({ force = false } = {}) {
     super();
     let listener;
     const exitEventHandler = () => {
@@ -62,6 +62,7 @@ class GrabBackFocus extends Mode {
 
     super.init({
       name: "grab-back-focus",
+      singleton: "grab-back-focus",
       keydown: exitEventHandler,
     });
 
@@ -75,7 +76,7 @@ class GrabBackFocus extends Mode {
     });
 
     if (this.modeIsActive) {
-      if (Settings.get("grabBackFocus")) {
+      if (force || Settings.get("grabBackFocus")) {
         this.push({
           _name: "grab-back-focus-focus",
           focus: (event) => this.grabBackFocus(event.target),
@@ -385,6 +386,13 @@ const messageHandlers = {
   },
   tabSelectionChanged({ count }) {
     TabSelection.count = count;
+  },
+  // A Vimium command (e.g. J / K) switched to this tab. Start in normal mode, so that the next
+  // command works, rather than in the text box the page focuses when shown (Chrome restores the
+  // focus, and pages like claude.ai focus their input themselves). The page may have the focus
+  // again once the user types or clicks.
+  activatedByVimium() {
+    if (isEnabledForUrl) new GrabBackFocus({ force: true });
   },
 };
 

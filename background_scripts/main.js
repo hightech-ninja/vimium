@@ -202,7 +202,7 @@ async function selectSpecificTab(request) {
   if (chrome.windows != null) {
     await chrome.windows.update(tab.windowId, { focused: true });
   }
-  await chrome.tabs.update(request.id, { active: true });
+  await bgUtils.activateTab(request.id);
 }
 
 function moveTab(request) {
@@ -344,12 +344,19 @@ const BackgroundCommands = {
     return selectTab("last", request);
   },
   async removeTab({ count, tab }) {
+    const removals = [];
     await forCountTabs(count, tab, (tab) => {
       // In Firefox, Ctrl-W will not close a pinned tab, but on Chrome, it will. We try to be
       // consistent with each browser's UX for pinned tabs.
       if (tab.pinned && bgUtils.isFirefox()) return;
-      chrome.tabs.remove(tab.id);
+      removals.push(chrome.tabs.remove(tab.id));
     });
+    if (removals.length == 0) return;
+    await Promise.allSettled(removals);
+    // Chrome activates another tab; like the tab-switching commands, it should start in normal
+    // mode, so that x x x keeps closing tabs.
+    const [active] = await chrome.tabs.query({ windowId: tab.windowId, active: true });
+    if (active) await bgUtils.notifyActivatedByVimium(active.id);
   },
   restoreTab: createRepeatCommand(async (_request) => {
     await chrome.sessions.restore(null);
@@ -513,7 +520,7 @@ async function selectTab(direction, { count, tab }) {
           return Math.max(0, tabs.length - count);
       }
     })();
-    await chrome.tabs.update(tabs[toSelect].id, { active: true });
+    await bgUtils.activateTab(tabs[toSelect].id);
   }
 }
 

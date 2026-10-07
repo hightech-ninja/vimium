@@ -1402,6 +1402,63 @@ context("GrabBackFocus", () => {
   });
 });
 
+// J / K and other Vimium commands which switch tabs tell the new tab, so that it starts in normal
+// mode even when the page focuses a text box.
+context("Arriving in a tab through a Vimium command", () => {
+  let input;
+
+  setup(() => {
+    document.getElementById("test-div").innerHTML = "<input type='text' id='input'/>";
+    input = document.getElementById("input");
+    stubSettings("grabBackFocus", false);
+    initializeModeState();
+  });
+
+  teardown(() => {
+    document.activeElement?.blur();
+    document.getElementById("test-div").innerHTML = "";
+  });
+
+  should("blur the focused input and handle the next key in normal mode", () => {
+    input.focus();
+    messageHandlers.activatedByVimium();
+    assert.isFalse(DomUtils.isEditable(document.activeElement));
+    sendKeyboardEvent("m");
+    assert.equal("m", commandName);
+  });
+
+  should("blur an input the page focuses before the user types", () => {
+    messageHandlers.activatedByVimium();
+    input.focus();
+    assert.isFalse(DomUtils.isEditable(document.activeElement));
+  });
+
+  should("let the page focus an input after the user types", () => {
+    messageHandlers.activatedByVimium();
+    sendKeyboardEvent("m");
+    input.focus();
+    assert.isTrue(DomUtils.isEditable(document.activeElement));
+  });
+
+  should("let the user click into an input", () => {
+    messageHandlers.activatedByVimium();
+    handlerStack.bubbleEvent("mousedown", { target: input });
+    input.focus();
+    assert.isTrue(DomUtils.isEditable(document.activeElement));
+  });
+
+  should("do nothing where Vimium is disabled", () => {
+    isEnabledForUrl = false;
+    try {
+      input.focus();
+      messageHandlers.activatedByVimium();
+      assert.isTrue(DomUtils.isEditable(document.activeElement));
+    } finally {
+      isEnabledForUrl = true;
+    }
+  });
+});
+
 // Keep this context last: unloading resets Vimium's state for the rest of the page.
 context("Orphaned content script", () => {
   teardown(() => isEnabledForUrl = true);

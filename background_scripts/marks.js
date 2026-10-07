@@ -1,3 +1,4 @@
+import * as bgUtils from "./bg_utils.js";
 import * as TabOperations from "./tab_operations.js";
 
 // This returns the key which is used for storing mark locations in chrome.storage.sync.
@@ -77,7 +78,7 @@ export async function goto(req) {
 
 // Focus an existing tab and scroll to the given position within it.
 async function gotoPositionInTab({ tabId, scrollX, scrollY }) {
-  const tab = await chrome.tabs.update(tabId, { active: true });
+  const tab = await bgUtils.activateTab(tabId);
   chrome.windows.update(tab.windowId, { focused: true });
   chrome.tabs.sendMessage(tabId, { handler: "setScrollPosition", scrollX, scrollY });
 }

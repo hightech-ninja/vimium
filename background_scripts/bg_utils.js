@@ -31,6 +31,25 @@ export function getNewTabUrl() {
 export const tabRecency = new TabRecency();
 tabRecency.init();
 
+// Activates a tab for a Vimium command, and tells the tab, so that it starts in normal mode rather
+// than in a text box which the page focuses (see activatedByVimium in vimium_frontend.js). Returns
+// the tab.
+export async function activateTab(tabId) {
+  const tab = await chrome.tabs.update(tabId, { active: true });
+  await notifyActivatedByVimium(tabId);
+  return tab;
+}
+
+// Tells a tab that a Vimium command made it the active tab (directly, or by closing the previous
+// one).
+export async function notifyActivatedByVimium(tabId) {
+  try {
+    await chrome.tabs.sendMessage(tabId, { handler: "activatedByVimium" });
+  } catch {
+    // The tab has no content script, e.g. a chrome:// page.
+  }
+}
+
 // Returns the most recently active tab in `windowId` which satisfies `isValid`, or null. The tab
 // `excludeTabId` (typically the current tab) is never returned.
 export async function getLastActiveTab({ windowId, excludeTabId, isValid }) {

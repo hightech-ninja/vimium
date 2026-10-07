@@ -31,7 +31,7 @@ async function activateFallbackTab(tab, isValid) {
       await chrome.tabs.ungroup([nextTab.id]);
     }
   }
-  await chrome.tabs.update(nextTab.id, { active: true });
+  await bgUtils.activateTab(nextTab.id);
 }
 
 // Collapses the current tab's group, and moves to the last active tab outside of that group.
@@ -99,7 +99,7 @@ async function goToTabGroup(tab, steps) {
   if (groupId === tab.groupId) return;
   const target = await groupLandingTab(tabs, groupId);
   await chrome.tabGroups.update(groupId, { collapsed: false });
-  await chrome.tabs.update(target.id, { active: true });
+  await bgUtils.activateTab(target.id);
 }
 
 // Moves an unpinned tab (or the current multi-tab selection) left or right, respecting group

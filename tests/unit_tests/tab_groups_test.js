@@ -258,6 +258,13 @@ context("nextTabGroup / previousTabGroup (zn / zN)", () => {
     assert.equal(1, activatedId);
   });
 
+  should("tell the tab it switched to", async () => {
+    const sent = [];
+    stub(chrome.tabs, "sendMessage", (id, message) => sent.push([id, message.handler]));
+    await nextTabGroup({ tab: tabs[0] });
+    assert.equal([[4, "activatedByVimium"]], sent);
+  });
+
   should("go to the tab last used in the group", async () => {
     recency = [2, 5, 1, 4];
     await previousTabGroup({ tab: tabs[3] });
