@@ -231,6 +231,38 @@ context("Validate commands and options data structures", () => {
     assert.equal("toggleViewSource", Commands.keyToRegistryEntry["gs"].command);
   });
 
+  context("vertical tabs", () => {
+    const commandFor = (key) => Commands.keyToRegistryEntry[key].command;
+
+    teardown(async () => {
+      await Settings.set("verticalTabs", false);
+      await Commands.loadKeyMappings("");
+    });
+
+    should("map J to the previous tab and K to the next one by default", async () => {
+      await Commands.loadKeyMappings("");
+      assert.equal("previousTab", commandFor("J"));
+      assert.equal("nextTab", commandFor("K"));
+    });
+
+    should("map J to the next tab (down) and K to the previous one (up)", async () => {
+      await Settings.set("verticalTabs", true);
+      await Commands.loadKeyMappings("");
+      assert.equal("nextTab", commandFor("J"));
+      assert.equal("previousTab", commandFor("K"));
+      // Only J and K change.
+      assert.equal("nextTab", commandFor("gt"));
+      assert.equal("previousTab", commandFor("gT"));
+    });
+
+    should("let the user's mappings of J and K win", async () => {
+      await Settings.set("verticalTabs", true);
+      await Commands.loadKeyMappings("map J firstTab");
+      assert.equal("firstTab", commandFor("J"));
+      assert.equal("previousTab", commandFor("K"));
+    });
+  });
+
   should("have valid commands for each default key mapping", () => {
     const commandsByName = Utils.keyBy(allCommands, "name");
     for (const [key, commandString] of Object.entries(defaultKeyMappings)) {

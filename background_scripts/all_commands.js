@@ -473,14 +473,14 @@ const allCommands = [
 
   {
     name: "previousTab",
-    desc: "Go one tab left",
+    desc: "Go one tab left (up with vertical tabs)",
     group: "tabs",
     background: true,
   },
 
   {
     name: "nextTab",
-    desc: "Go one tab right",
+    desc: "Go one tab right (down with vertical tabs)",
     group: "tabs",
     background: true,
   },

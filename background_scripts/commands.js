@@ -303,9 +303,9 @@ const Commands = {
     this.keyToRegistryEntry = {};
     this.mapKeyRegistry = {};
 
-    const defaultKeyConfig = Object.keys(defaultKeyMappings).map((key) =>
-      `map ${key} ${defaultKeyMappings[key]}`
-    ).join("\n");
+    const defaults = getDefaultKeyMappings(Settings.get("verticalTabs"));
+    const defaultKeyConfig = Object.keys(defaults).map((key) => `map ${key} ${defaults[key]}`)
+      .join("\n");
 
     const parsed = KeyMappingsParser.parse(
       defaultKeyConfig + "\n" + userKeyMappingsConfigText,
@@ -402,6 +402,13 @@ const Commands = {
     chrome.storage.session.set({ commandToOptionsToKeys });
   },
 };
+
+// With vertical tabs, the next tab is below the current one, so J and K follow j and k (scroll down
+// and up). Chrome doesn't tell extensions where the tab strip is, hence the setting.
+function getDefaultKeyMappings(verticalTabs) {
+  if (!verticalTabs) return defaultKeyMappings;
+  return { ...defaultKeyMappings, "J": "nextTab", "K": "previousTab" };
+}
 
 const defaultKeyMappings = {
   // Navigating the current page
@@ -503,6 +510,7 @@ export {
   Commands,
   // Exported for unit tests.
   defaultKeyMappings,
+  getDefaultKeyMappings,
   KeyMappingsParser,
   parseLines,
 };

@@ -58,6 +58,14 @@ context("options page", () => {
     assert.equal("alt", checked());
   });
 
+  should("show and save the vertical tabs setting", async () => {
+    const el = optionsPage.getOptionEl("verticalTabs");
+    assert.isFalse(el.checked);
+    el.checked = true;
+    await optionsPage.saveOptions();
+    assert.equal(true, Settings.get("verticalTabs"));
+  });
+
   should("show the default modifier when the stored one is unknown", async () => {
     await Settings.set("vomnibarJumpModifier", "ctrlKey");
     await optionsPage.init();

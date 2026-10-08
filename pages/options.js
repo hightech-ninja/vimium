@@ -9,6 +9,7 @@ const options = {
   hideHud: "boolean",
   hideUpdateNotifications: "boolean",
   ignoreKeyboardLayout: "boolean",
+  verticalTabs: "boolean",
   keyMappings: "string",
   linkHintCharacters: "string",
   linkHintNumbers: "string",
