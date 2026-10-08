@@ -1,3 +1,66 @@
+# Fork
+
+A personal fork of [philc/vimium](https://github.com/philc/vimium). What's new is listed below.
+
+**Chrome only. The fork is built and tested only in Chrome; Firefox, Edge and other browsers are not
+supported. The store links further down install upstream Vimium, not this fork; to use the fork,
+[install it from source](CONTRIBUTING.md#installing-from-source) as an unpacked extension.**
+
+**Tab groups** (from [#4914](https://github.com/philc/vimium/pull/4914), which builds on
+[#4858](https://github.com/philc/vimium/pull/4858))
+
+| Key       | Effect                                                                                                |
+| --------- | ----------------------------------------------------------------------------------------------------- |
+| `zn` `zN` | Go to the next / previous group, on the tab last used there (wraps, expands it, takes a count)        |
+| `za`      | Collapse the current group and go to the last-used tab outside it (`^` goes back)                     |
+| `zA`      | Collapse all groups                                                                                   |
+| `zz` `ZZ` | Select more tabs to the right / left, like Vim visual mode (`ZZ` after `zz` shrinks it); `Esc` clears |
+| `ZG`      | Search tab groups in the Vomnibar and go to one (to the tab last used there)                          |
+| `zg`      | Add the selected tabs to a group, or create a new one (name, then color); clears the selection        |
+| `J` `K`   | Also `gt` `gT` `g0` `g$`: skip tabs in collapsed groups                                               |
+| `>>` `<<` | Enter / leave a group at its edge, jump over collapsed groups, move a selection as one block          |
+| `T`       | Choosing a tab in a collapsed group expands the group                                                 |
+
+**Vertical tabs:** turn on "Vertical tabs" in Options when Chrome shows tabs on the side. `J` then
+goes to the next tab (down) and `K` to the previous one (up), like `j` / `k`. Chrome doesn't tell
+extensions where the tab strip is, so this can't switch by itself. Your own `map J` / `map K` still
+win. "Right" / "left" in the tables below mean "down" / "up" with vertical tabs.
+
+**Switching tabs:** a tab reached with a Vimium command (`J` `K` `gt` `gT` `g0` `g$` `^` `x` `T`
+`zn` `zN` `za` `zA` `ZG`, global marks) starts in normal mode, even if the page focuses a text box
+(e.g. claude.ai), so `K` `K` `K` keeps going. Type or click to use the text box (`i`, `gi`).
+
+**Vomnibar** (from [#4945](https://github.com/philc/vimium/pull/4945))
+
+| Key                | Effect                                                                      |
+| ------------------ | --------------------------------------------------------------------------- |
+| `Ctrl`+`1`…`0`     | Pick the numbered result (in every Vomnibar list, including groups and `:`) |
+| `Ctrl+Shift`+digit | Same, in a new tab                                                          |
+
+The modifier is set in Options ("Vomnibar number keys": Ctrl, Alt or off).
+
+**Link hints** (from [#4766](https://github.com/philc/vimium/pull/4766))
+
+| Key     | Effect                                                                       |
+| ------- | ---------------------------------------------------------------------------- |
+| `f` ... | Hints which sit on top of each other show as one                             |
+| `Space` | Show the next hidden hint of each stack (`Shift+Space` when filtering hints) |
+
+Option: "Hide link hints covered by another hint" (on by default).
+
+**Scroll targeting** (idea from [#4658](https://github.com/philc/vimium/pull/4658); marks from
+[#4925](https://github.com/philc/vimium/pull/4925)). `gS` is
+`LinkHints.activateMode action=select-scroll-target`.
+
+| Key     | Effect                                                                    |
+| ------- | ------------------------------------------------------------------------- |
+| `gS`    | Pick a hint inside a pane; `j` `k` `d` `u` `gg` `G` then scroll that pane |
+| `m`+key | Local marks also save the pane's scroll position; `` ` ``+key restores it |
+
+**Russian layout:** commands work by key position out of the box: upstream's "Ignore keyboard
+layout" option is on by default in this fork. Map US keys, not Cyrillic ones. Porting langmap
+([#4833](https://github.com/philc/vimium/pull/4833)) is deferred.
+
 # Vimium - The Hacker's Browser
 
 Vimium is a browser extension that provides keyboard-based navigation and control of the web in the
