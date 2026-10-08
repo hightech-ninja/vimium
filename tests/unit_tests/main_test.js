@@ -212,3 +212,11 @@ context("majorVersionHasIncreased", () => {
     assert.equal(true, majorVersionHasIncreased("2.0.0"));
   });
 });
+
+context("shouldInjectContentScripts", () => {
+  should("inject into open tabs after Vimium is installed, reloaded or updated", () => {
+    for (const reason of ["install", "update", "chrome_update", "shared_module_update"]) {
+      assert.isTrue(shouldInjectContentScripts({ reason }));
+    }
+  });
+});

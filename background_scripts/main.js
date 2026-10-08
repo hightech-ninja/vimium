@@ -901,6 +901,19 @@ async function initializeExtension() {
   await Commands.init();
 }
 
+function shouldInjectContentScripts(details) {
+  return (
+    // NOTE(philc): 2023-06-16: we do not install the content scripts in all tabs on Firefox.
+    // I believe this is because Firefox does this already. See https://stackoverflow.com/a/37132144
+    // for commentary.
+    !bgUtils.isFirefox() &&
+    // Chrome doesn't run content scripts in tabs which were open before Vimium was installed,
+    // reinstalled, reloaded or updated, so the popup said Vimium wasn't allowed on those pages until
+    // they were reloaded. Upstream only injects after a Chrome update.
+    ["install", "update", "chrome_update", "shared_module_update"].includes(details.reason)
+  );
+}
+
 // The browser may have tabs already open. We inject the content scripts and Vimium's CSS
 // immediately so that the extension is running on the pages immediately after install, rather than
 // having to reload those pages.
@@ -911,13 +924,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   // also occur, so we need to initialize Vimium here.
   await initializeExtension();
 
-  const shouldInjectContentScripts =
-    // NOTE(philc): 2023-06-16: we do not install the content scripts in all tabs on Firefox.
-    // I believe this is because Firefox does this already. See https://stackoverflow.com/a/37132144
-    // for commentary.
-    !bgUtils.isFirefox() &&
-    (["chrome_update", "shared_module_update"].includes(details.reason));
-  if (shouldInjectContentScripts) injectContentScriptsAndCSSIntoExistingTabs();
+  if (shouldInjectContentScripts(details)) injectContentScriptsAndCSSIntoExistingTabs();
 
   await showUpgradeMessageIfNecessary(details);
 });
@@ -935,6 +942,7 @@ Object.assign(globalThis, {
   BackgroundCommands,
   majorVersionHasIncreased,
   nextZoomLevel,
+  shouldInjectContentScripts,
 });
 
 // The chrome.runtime.onStartup and onInstalled events are not fired when disabling and then
